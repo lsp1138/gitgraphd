@@ -37,8 +37,18 @@ pub struct App {
     pub fetching: bool,
     /// After a reload, put the cursor back on this commit when it arrives.
     pending_cursor: Option<String>,
-    /// Draw the graph with `* | / \` instead of box-drawing glyphs.
-    pub ascii: bool,
+    /// How graph lines are drawn.
+    pub style: LineStyle,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LineStyle {
+    /// Heavy box-drawing lines with square corners.
+    Heavy,
+    /// Thin box-drawing lines with rounded corners.
+    Thin,
+    /// `* | / \` for terminals without box-drawing glyphs.
+    Ascii,
 }
 
 impl App {
@@ -57,7 +67,7 @@ impl App {
             loading: false,
             fetching: false,
             pending_cursor: None,
-            ascii: false,
+            style: LineStyle::Heavy,
         };
         for c in commits {
             app.push(c);

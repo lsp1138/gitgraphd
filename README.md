@@ -51,7 +51,8 @@ files it added instead of the full diff, which would be the entire import.
 Flags: `--all`, `-n N`, `--order=date|author-date|topo` (date is the default,
 as in Git Graph; topo keeps merged branches' commits together but opens far
 more lanes on busy repositories), `--date=<git date format>`, `--ascii` for
-terminals without box-drawing glyphs, and an optional repository path.
+terminals without box-drawing glyphs, `--thin` for thin rounded lines instead
+of the heavy square ones, and an optional repository path.
 
 `GG_PAGER` overrides the pager for gg only, for example `GG_PAGER=less`.
 

@@ -36,8 +36,12 @@ struct Args {
     all: bool,
 
     /// Draw the graph with plain ASCII instead of box-drawing characters
-    #[arg(long)]
+    #[arg(long, conflicts_with = "thin")]
     ascii: bool,
+
+    /// Thin graph lines with rounded corners instead of heavy ones
+    #[arg(long)]
+    thin: bool,
 
     /// Stop after this many commits
     #[arg(short = 'n', long = "max-count", value_name = "N")]
@@ -78,7 +82,13 @@ fn gg() -> Result<()> {
 
     let rx = git::stream(&opts)?;
     let mut app = app::App::new(Vec::new());
-    app.ascii = args.ascii;
+    app.style = if args.ascii {
+        app::LineStyle::Ascii
+    } else if args.thin {
+        app::LineStyle::Thin
+    } else {
+        app::LineStyle::Heavy
+    };
     app.dark = prefers_dark();
 
     // Wait for the first commit before taking over the screen, so a bad

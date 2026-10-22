@@ -4,7 +4,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
-use crate::app::App;
+use crate::app::{App, LineStyle};
 use crate::git::{Commit, RefKind};
 use crate::graph::Row;
 
@@ -33,23 +33,40 @@ fn line_color(colour: usize) -> Color {
     PALETTE[colour % PALETTE.len()]
 }
 
-/// Plain-ASCII stand-in for each box-drawing glyph.
-fn ascii(ch: char) -> char {
-    match ch {
-        '●' => '*',
-        '◉' => '@',
-        '○' => 'o',
-        '│' => '|',
-        '─' => '-',
-        '╮' | '╰' => '\\',
-        '╭' | '╯' => '/',
-        '┼' | '┤' | '├' | '┬' | '┴' => '+',
-        other => other,
+/// The layout produces thin rounded glyphs; translate for the other styles.
+fn glyph(ch: char, style: LineStyle) -> char {
+    match style {
+        LineStyle::Thin => ch,
+        LineStyle::Heavy => match ch {
+            '│' => '┃',
+            '─' => '━',
+            '╭' => '┏',
+            '╮' => '┓',
+            '╰' => '┗',
+            '╯' => '┛',
+            '┼' => '╋',
+            '┤' => '┫',
+            '├' => '┣',
+            '┬' => '┳',
+            '┴' => '┻',
+            other => other,
+        },
+        LineStyle::Ascii => match ch {
+            '●' => '*',
+            '◉' => '@',
+            '○' => 'o',
+            '│' => '|',
+            '─' => '-',
+            '╮' | '╰' => '\\',
+            '╭' | '╯' => '/',
+            '┼' | '┤' | '├' | '┬' | '┴' => '+',
+            other => other,
+        },
     }
 }
 
 /// Spans for one graph row, padded to `width` cells.
-fn graph_spans(row: &Row, width: usize, plain: bool) -> Vec<Span<'static>> {
+fn graph_spans(row: &Row, width: usize, style: LineStyle) -> Vec<Span<'static>> {
     let mut spans = Vec::with_capacity(row.cells.len() + 1);
     let mut run = String::new();
     let mut run_colour = usize::MAX;
@@ -58,7 +75,7 @@ fn graph_spans(row: &Row, width: usize, plain: bool) -> Vec<Span<'static>> {
             spans.push(Span::styled(std::mem::take(&mut run), Style::new().fg(line_color(run_colour))));
         }
         run_colour = cell.colour;
-        run.push(if plain { ascii(cell.ch) } else { cell.ch });
+        run.push(glyph(cell.ch, style));
     }
     if !run.is_empty() {
         spans.push(Span::styled(run, Style::new().fg(line_color(run_colour))));
@@ -91,7 +108,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             frame.buffer_mut().set_style(area, Style::new().bg(bg));
         }
 
-        let mut spans = graph_spans(&app.rows[index], graph_width, app.ascii);
+        let mut spans = graph_spans(&app.rows[index], graph_width, app.style);
         spans.push(Span::raw("  "));
         spans.extend([
             Span::styled(commit.short_hash().to_string(), Style::new().fg(Color::Yellow)),

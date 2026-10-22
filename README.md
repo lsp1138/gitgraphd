@@ -77,7 +77,8 @@ takes the lowest colour no live line is using, from Git Graph's default
 twelve-colour palette. A feature branch sitting directly on top of dev is the
 same line as dev and shares its colour; one that diverged gets its own.
 
-Pills: green local branch, blue remote, yellow tag, white detached HEAD, grey
-anything else. The checked-out branch is bold and underlined. The selection
+Ref pills take the colour of the line their commit is on, as in Git Graph.
+Tags are prefixed with `tag:`, and the checked-out branch is bold and
+underlined. The selection
 colour follows the desktop light/dark setting on GNOME and macOS; set
 `GG_THEME=light` or `GG_THEME=dark` to override, or anywhere else.

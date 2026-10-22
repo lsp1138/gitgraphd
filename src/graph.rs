@@ -36,8 +36,7 @@ impl Row {
         self.cells.iter().map(|c| c.ch).collect()
     }
 
-    /// Colour of the commit node itself.
-    #[cfg(test)]
+    /// Colour of the commit node itself, i.e. of the line it belongs to.
     pub fn node_colour(&self) -> usize {
         self.cells[2 * self.lane].colour
     }

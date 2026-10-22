@@ -33,6 +33,15 @@ fn line_color(colour: usize) -> Color {
     PALETTE[colour % PALETTE.len()]
 }
 
+/// Black or white, whichever reads better on this line colour.
+fn text_on(colour: Color) -> Color {
+    let Color::Rgb(r, g, b) = colour else {
+        return Color::Black;
+    };
+    let luma = 0.299 * r as f32 + 0.587 * g as f32 + 0.114 * b as f32;
+    if luma > 120.0 { Color::Black } else { Color::White }
+}
+
 /// The layout produces thin rounded glyphs; translate for the other styles.
 fn glyph(ch: char, style: LineStyle) -> char {
     match style {
@@ -121,7 +130,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             Span::styled(pad_right(&commit.author, AUTHOR_WIDTH), Style::new().fg(Color::Cyan)),
             Span::raw("  "),
         ]);
-        spans.extend(ref_pills(commit));
+        spans.extend(ref_pills(commit, app.rows[index].node_colour()));
         spans.push(Span::styled(
                 commit.subject.clone(),
                 if selected {
@@ -162,23 +171,22 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     );
 }
 
-/// Coloured pills for the refs on a commit, Git Graph style, each followed
-/// by a space. Empty when the commit has no refs.
-fn ref_pills(commit: &Commit) -> Vec<Span<'static>> {
+/// Pills for the refs on a commit, Git Graph style: every label takes the
+/// colour of the line the commit is on. Tags get a "tag:" prefix so they
+/// are still told apart from branches. Each pill is followed by a space.
+fn ref_pills(commit: &Commit, colour: usize) -> Vec<Span<'static>> {
+    let bg = line_color(colour);
     let mut spans = Vec::new();
     for r in commit.parsed_refs() {
-        let (fg, bg) = match r.kind {
-            RefKind::Head => (Color::Black, Color::White),
-            RefKind::Branch => (Color::Black, Color::Green),
-            RefKind::Remote => (Color::White, Color::Blue),
-            RefKind::Tag => (Color::Black, Color::Yellow),
-            RefKind::Other => (Color::Black, Color::Gray),
-        };
-        let mut style = Style::new().fg(fg).bg(bg);
+        let mut style = Style::new().fg(text_on(bg)).bg(bg);
         if r.is_head {
             style = style.add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
         }
-        spans.push(Span::styled(format!(" {} ", r.name), style));
+        let label = match r.kind {
+            RefKind::Tag => format!(" tag: {} ", r.name),
+            _ => format!(" {} ", r.name),
+        };
+        spans.push(Span::styled(label, style));
         spans.push(Span::raw(" "));
     }
     spans

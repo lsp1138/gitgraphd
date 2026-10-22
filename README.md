@@ -38,6 +38,9 @@ Run `gg` inside a repository. `gg --all` shows every branch, like Git Graph.
 
 Inside the diff you are in git's pager, so `q` returns to the list.
 
+The bottom line shows the position and the selected commit's full subject,
+in case the row cut it off. The full message is part of what `Space` shows.
+
 Flags: `--all`, `-n N`, `--order=date|author-date|topo` (date is the default,
 as in Git Graph; topo keeps merged branches' commits together but opens far
 more lanes on busy repositories), `--date=<git date format>`, `--ascii` for

@@ -112,9 +112,12 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     } else if !app.status.is_empty() {
         (app.status.clone(), Style::new().add_modifier(Modifier::REVERSED))
     } else {
+        // Position plus the selected commit's full subject, since the row
+        // itself may have cut it off.
+        let subject = app.selected().map(|c| c.subject.as_str()).unwrap_or("");
         (
             format!(
-                "[{}/{}{}]  j/k move  d/u page  g/G ends  Space diff  q quit",
+                "[{}/{}{}]  {subject}",
                 (app.cursor + 1).min(app.commits.len()),
                 app.commits.len(),
                 if app.loading { "+" } else { "" },

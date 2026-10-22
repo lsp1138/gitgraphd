@@ -95,6 +95,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     app.height = list_area.height as usize;
     app.scroll_to_cursor();
     let graph_width = app.graph.width.clamp(1, MAX_GRAPH_WIDTH);
+    // Secondary text: the terminal's dark grey is near-invisible on most
+    // dark palettes, so use plain grey there.
+    let dim = if app.dark { Color::Gray } else { Color::DarkGray };
 
     for (i, row) in (list_area.y..list_area.bottom()).enumerate() {
         let index = app.offset + i;
@@ -113,7 +116,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         spans.extend([
             Span::styled(commit.short_hash().to_string(), Style::new().fg(Color::Yellow)),
             Span::raw("  "),
-            Span::styled(pad_left(&commit.date, app.date_width), Style::new().fg(Color::DarkGray)),
+            Span::styled(pad_left(&commit.date, app.date_width), Style::new().fg(dim)),
             Span::raw("  "),
             Span::styled(pad_right(&commit.author, AUTHOR_WIDTH), Style::new().fg(Color::Cyan)),
             Span::raw("  "),
@@ -153,7 +156,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     frame.render_widget(
         Line::styled(
             " j/k move  d/u page  g/G ends  Space diff  F fetch  q quit",
-            Style::new().fg(Color::DarkGray),
+            Style::new().fg(dim),
         ),
         hints_area,
     );

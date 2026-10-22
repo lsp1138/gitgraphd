@@ -7,13 +7,15 @@
 //! for them or open a new one in the lowest free slot. Lanes never shift
 //! sideways, so every line is a straight vertical with corners at commits.
 //!
-//! Colour belongs to a line, not a column. Git Graph hands a new line the
-//! lowest colour not in use, which on a busy repository gives one short
-//! branch after another the same colour; instead the palette is cycled, so
-//! a colour comes back only after every other one has been used, and never
-//! on the row where it was released.
+//! Colour belongs to a line, not a column: a new line takes the lowest
+//! colour no live line is using, and a colour released on a row is not
+//! handed out again on that same row (Git Graph's rule), so a branch ending
+//! into a merge and one starting from it never look like one line. Across a
+//! reload, a line prefers the colour it had before.
 //!
 //! Each row is a list of cells, two per lane: a glyph and a spacer.
+
+use std::collections::HashMap;
 
 use crate::git::Commit;
 
@@ -49,17 +51,15 @@ struct Lane {
     colour: usize,
 }
 
-/// Size of the palette the UI draws with; colours cycle through it.
-pub const PALETTE_SIZE: usize = 12;
-
 #[derive(Default)]
 pub struct Graph {
     /// Active lanes, each holding the hash it waits for. `None` is a free slot.
     lanes: Vec<Option<Lane>>,
     /// Which colour indices a live line is using.
     colours_in_use: Vec<bool>,
-    /// Where the next colour search starts, so the palette is cycled.
-    next_colour: usize,
+    /// Colours from a previous layout, by commit hash and by ref name, so a
+    /// reload keeps main, dev and friends in the colours they had.
+    remembered: HashMap<String, usize>,
     /// Widest row produced so far, in cells.
     pub width: usize,
 }
@@ -67,6 +67,25 @@ pub struct Graph {
 impl Graph {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// A graph that prefers the colours a previous layout used.
+    pub fn with_memory(remembered: HashMap<String, usize>) -> Self {
+        Self { remembered, ..Self::default() }
+    }
+
+    /// What a finished layout knew: the colour of every commit, filed under
+    /// its hash and under each ref name on it.
+    pub fn memory(commits: &[Commit], rows: &[Row]) -> HashMap<String, usize> {
+        let mut map = HashMap::with_capacity(commits.len() + 64);
+        for (commit, row) in commits.iter().zip(rows) {
+            let colour = row.node_colour();
+            map.insert(commit.hash.clone(), colour);
+            for r in commit.parsed_refs() {
+                map.insert(r.name, colour);
+            }
+        }
+        map
     }
 
     pub fn push(&mut self, commit: &Commit) -> Row {
@@ -95,10 +114,16 @@ impl Graph {
             released.push(lane.colour);
         }
 
-        // The commit's own line: continue the lane's colour or start a line.
+        // The commit's own line: continue the lane's colour or start a line,
+        // preferring the colour this branch or commit had before a reload.
         let node_colour = match &self.lanes[node] {
             Some(l) => l.colour,
-            None => self.alloc_colour(),
+            None => {
+                let mut keys: Vec<String> =
+                    commit.parsed_refs().into_iter().map(|r| r.name).collect();
+                keys.push(commit.hash.clone());
+                self.alloc_colour_for(&keys)
+            }
         };
 
         // First parent inherits the lane; extra parents branch out.
@@ -122,7 +147,7 @@ impl Graph {
                 Some(j) => j,
                 None => {
                     let j = self.alloc_lane();
-                    let colour = self.alloc_colour();
+                    let colour = self.alloc_colour_for(std::slice::from_ref(p));
                     self.lanes[j] = Some(Lane { target: p.clone(), colour });
                     j
                 }
@@ -230,21 +255,35 @@ impl Graph {
         }
     }
 
-    /// Next colour in the cycle that no live line is using; a new index
-    /// beyond the palette only when every colour is in use at once.
-    fn alloc_colour(&mut self) -> usize {
-        let n = self.colours_in_use.len().max(PALETTE_SIZE);
-        self.colours_in_use.resize(n, false);
-        for k in 0..n {
-            let c = (self.next_colour + k) % n;
-            if !self.colours_in_use[c] {
-                self.colours_in_use[c] = true;
-                self.next_colour = (c + 1) % n;
-                return c;
+    /// The colour remembered for any of `keys` if it is free, else the next
+    /// one in the cycle.
+    fn alloc_colour_for(&mut self, keys: &[String]) -> usize {
+        if !self.remembered.is_empty() {
+            for key in keys {
+                let Some(&c) = self.remembered.get(key) else { continue };
+                if c >= self.colours_in_use.len() {
+                    self.colours_in_use.resize(c + 1, false);
+                }
+                if !self.colours_in_use[c] {
+                    self.colours_in_use[c] = true;
+                    return c;
+                }
             }
         }
-        self.colours_in_use.push(true);
-        self.colours_in_use.len() - 1
+        self.alloc_colour()
+    }
+
+    /// Lowest colour no live line is using.
+    fn alloc_colour(&mut self) -> usize {
+        let c = match self.colours_in_use.iter().position(|used| !used) {
+            Some(c) => c,
+            None => {
+                self.colours_in_use.push(false);
+                self.colours_in_use.len() - 1
+            }
+        };
+        self.colours_in_use[c] = true;
+        c
     }
 }
 
@@ -348,9 +387,8 @@ mod tests {
     }
 
     #[test]
-    fn later_line_takes_the_next_colour_not_the_freed_one() {
-        // one branch ends at b, a fresh one starts a row later: the palette
-        // cycles on, so it gets colour 2 even though 1 is free again
+    fn colour_is_reused_by_a_later_line() {
+        // one branch ends at b, a fresh one starts a row later: lowest free colour
         let h = [
             c("m", &["b", "f"]),
             c("f", &["b"]),
@@ -360,24 +398,41 @@ mod tests {
             c("a", &[]),
         ];
         assert_eq!(layout(&h), ["○─╮", "│ ●", "●─╯", "○─╮", "│ ●", "●─╯"]);
-        assert_eq!(node_colours(&h), [0, 1, 0, 0, 2, 0]);
+        assert_eq!(node_colours(&h), [0, 1, 0, 0, 1, 0]);
     }
 
     #[test]
-    fn colours_wrap_after_the_whole_palette() {
-        // thirteen short branches in a row, each merged by the next merge
-        // commit: colours 1..11 are handed out, then the cycle wraps to 1
-        let mut h = Vec::new();
-        for i in 1..=13 {
-            let next = if i == 13 { "root".to_string() } else { format!("m{}", i + 1) };
-            let (m, f) = (format!("m{i}"), format!("f{i}"));
-            h.push(c(&m, &[&next, &f]));
-            h.push(c(&f, &[&next]));
-        }
-        h.push(c("root", &[]));
-        let cols = node_colours(&h);
-        let branch_cols: Vec<usize> = cols.iter().skip(1).step_by(2).copied().collect();
-        assert_eq!(branch_cols, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 1, 2]);
+    fn reload_keeps_branch_colours() {
+        let with_ref = |hash: &str, parents: &[&str], refs: &str| {
+            let mut commit = c(hash, parents);
+            commit.refs = refs.into();
+            commit
+        };
+        // before: main on top (colour 0), dev as a second tip (colour 1)
+        let before = [
+            with_ref("a", &["x"], "refs/heads/main"),
+            with_ref("b", &["x"], "refs/heads/dev"),
+            c("x", &[]),
+        ];
+        let old_rows = rows(&before);
+        assert_eq!(old_rows.iter().map(Row::node_colour).collect::<Vec<_>>(), [0, 1, 0]);
+        let memory = Graph::memory(&before, &old_rows);
+
+        // after a fetch dev has a new tip b2, now the newest commit of all
+        let after = [
+            with_ref("b2", &["b"], "refs/heads/dev"),
+            with_ref("a", &["x"], "refs/heads/main"),
+            c("b", &["x"]),
+            c("x", &[]),
+        ];
+        let mut g = Graph::with_memory(memory);
+        let cols: Vec<usize> = after.iter().map(|c| g.push(c).node_colour()).collect();
+        // dev stays 1 and main stays 0 (the shared base x is claimed by the
+        // first line, dev's); without memory dev would take 0 and main 1
+        assert_eq!(cols, [1, 0, 1, 1]);
+        let mut fresh = Graph::new();
+        let fresh_cols: Vec<usize> = after.iter().map(|c| fresh.push(c).node_colour()).collect();
+        assert_eq!(fresh_cols, [0, 1, 0, 0]);
     }
 
     #[test]

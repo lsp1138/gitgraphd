@@ -99,9 +99,9 @@ impl App {
     /// Drop the history ahead of a reload, remembering where the cursor was.
     pub fn reset(&mut self) {
         self.pending_cursor = self.selected().map(|c| c.hash.clone());
+        self.graph = Graph::with_memory(Graph::memory(&self.commits, &self.rows));
         self.commits.clear();
         self.rows.clear();
-        self.graph = Graph::new();
         self.cursor = 0;
         self.offset = 0;
         self.date_width = 0;

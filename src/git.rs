@@ -29,9 +29,9 @@ pub struct Commit {
     pub hash: String,
     pub parents: Vec<String>,
     pub author: String,
-    /// Date as git formatted it (`--date=...`, relative by default).
+    /// Committer date as git formatted it (`--date=...`, relative by default).
     pub date: String,
-    /// Author time as `YYYY-MM-DD HH:MM` in the author's own timezone.
+    /// Committer time as `YYYY-MM-DD HH:MM` in the committer's own timezone.
     pub timestamp: String,
     /// Raw `%D` decoration string, e.g. `HEAD -> main, origin/main, tag: v1`.
     pub refs: String,
@@ -77,7 +77,9 @@ impl Commit {
     }
 }
 
-const FORMAT: &str = "--format=%H%x00%P%x00%an%x00%ad%x00%aI%x00%D%x00%s";
+// Committer dates, because --date-order sorts by them; author dates of
+// rebased or cherry-picked commits would look out of sequence.
+const FORMAT: &str = "--format=%H%x00%P%x00%an%x00%cd%x00%cI%x00%D%x00%s";
 
 #[derive(Debug, Clone)]
 pub struct LogOpts {

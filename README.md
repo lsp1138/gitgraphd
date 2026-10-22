@@ -57,6 +57,7 @@ is in mouse mode, hold Shift to select text while gg is running.
 
 Inside the diff you are in git's pager, so `q` returns to the list.
 
+Dates are committer dates, which is what the default date order sorts by.
 The line above the key hints shows the position and the selected commit's
 full subject, in case the row cut it off. The full message is part of what
 `Space` shows. On the root commit, `Space` shows the message and the list of
@@ -79,11 +80,9 @@ still waits for `q` instead of flashing past.
 Graph colours follow lines, as in Git Graph: a line is a commit and its
 first-parent chain until it ends by merging into another line. A feature
 branch sitting directly on top of dev is the same line as dev and shares its
-colour; one that diverged gets its own. The palette is Git Graph's default
-twelve colours. One deliberate difference: Git Graph gives a new line the
-lowest colour that is free, which on a busy repository paints one short
-branch after another the same; `gg` cycles through the palette instead, so a
-colour only comes back once all the others have been used.
+colour; one that diverged gets its own. A new line takes the lowest colour
+no live line is using, from Git Graph's default twelve colours, and a reload
+after `F` keeps the colours lines had before, so main and dev do not swap.
 
 Ref pills take the colour of the line their commit is on, as in Git Graph.
 Tags are prefixed with `tag:`, and the checked-out branch is bold and

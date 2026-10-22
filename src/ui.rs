@@ -100,6 +100,12 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let [list_area, status_area, hints_area] =
         Layout::vertical([Constraint::Fill(1), Constraint::Length(1), Constraint::Length(1)])
             .areas(frame.area());
+    // One column of margin so the graph never sits against a pane border.
+    let list_area = Rect {
+        x: list_area.x + 1,
+        width: list_area.width.saturating_sub(1),
+        ..list_area
+    };
 
     app.height = list_area.height as usize;
     app.scroll_to_cursor();

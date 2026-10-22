@@ -174,22 +174,69 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     );
 }
 
-/// Pills for the refs on a commit, Git Graph style: every label takes the
-/// colour of the line the commit is on. Tags get a "tag:" prefix so they
-/// are still told apart from branches. Each pill is followed by a space.
+/// Pills for the refs on a commit, following Git Graph's label rules: a
+/// local branch and its remote on the same commit become one filled pill
+/// (`dev │ origin`); a remote with no local counterpart is a filled pill;
+/// a local branch not on any remote here is drawn as a frame in the line
+/// colour, so unpushed work stands out. The checked-out branch comes first,
+/// bold and underlined. Tags carry a `tag:` prefix. Each pill is followed
+/// by a space.
 fn ref_pills(commit: &Commit, colour: usize) -> Vec<Span<'static>> {
     let bg = line_color(colour);
-    let mut spans = Vec::new();
-    for r in commit.parsed_refs() {
-        let mut style = Style::new().fg(text_on(bg)).bg(bg);
+    let filled = Style::new().fg(text_on(bg)).bg(bg);
+    let framed = Style::new().fg(bg);
+    let head_mark = Modifier::BOLD | Modifier::UNDERLINED;
+
+    let refs = commit.parsed_refs();
+    // remote refs as (remote, branch), consumed as locals claim them
+    let mut remotes: Vec<(String, String)> = refs
+        .iter()
+        .filter(|r| r.kind == RefKind::Remote)
+        .filter_map(|r| r.name.split_once('/').map(|(a, b)| (a.to_string(), b.to_string())))
+        .collect();
+
+    let mut pills: Vec<Span<'static>> = Vec::new();
+    let mut locals: Vec<&crate::git::Ref> = refs.iter().filter(|r| r.kind == RefKind::Branch).collect();
+    locals.sort_by_key(|r| !r.is_head);
+    for local in locals {
+        let mut on: Vec<String> = Vec::new();
+        remotes.retain(|(remote, branch)| {
+            if *branch == local.name {
+                on.push(remote.clone());
+                false
+            } else {
+                true
+            }
+        });
+        let mut style = if on.is_empty() { framed } else { filled };
+        if local.is_head {
+            style = style.add_modifier(head_mark);
+        }
+        let label = if on.is_empty() {
+            format!("[ {} ]", local.name)
+        } else {
+            format!(" {} │ {} ", local.name, on.join(" "))
+        };
+        pills.push(Span::styled(label, style));
+    }
+    for (remote, branch) in remotes {
+        pills.push(Span::styled(format!(" {remote}/{branch} "), filled));
+    }
+    for r in refs.iter().filter(|r| matches!(r.kind, RefKind::Head | RefKind::Tag | RefKind::Other)) {
+        let mut style = filled;
         if r.is_head {
-            style = style.add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
+            style = style.add_modifier(head_mark);
         }
         let label = match r.kind {
             RefKind::Tag => format!(" tag: {} ", r.name),
             _ => format!(" {} ", r.name),
         };
-        spans.push(Span::styled(label, style));
+        pills.push(Span::styled(label, style));
+    }
+
+    let mut spans = Vec::with_capacity(pills.len() * 2);
+    for pill in pills {
+        spans.push(pill);
         spans.push(Span::raw(" "));
     }
     spans

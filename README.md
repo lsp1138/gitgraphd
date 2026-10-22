@@ -4,12 +4,11 @@
 Git Graph extension, tig-style navigation, and `Space` to open the selected
 commit in [delta](https://github.com/dandavison/delta). Nothing else.
 
-```
-◉    58a3dcc    3 months ago  Gregory Pako   master   origin/master   made fpp robust
-●    c509f37    3 months ago  Gregory Pako  quote #{socket_path} when invoking TMUX
-│ ●  190b0e5    6 years ago   Lars           feat99750  work on feat99750
-○─╯  34fa663    6 years ago   Lars          merge feat99750
-```
+![gg showing delta's own history](docs/graph.png)
+
+`Space` on a commit hands the terminal to git's pager, delta here:
+
+![the selected commit's diff rendered by delta](docs/diff.png)
 
 ## Install
 

@@ -78,6 +78,6 @@ twelve-colour palette. A feature branch sitting directly on top of dev is the
 same line as dev and shares its colour; one that diverged gets its own.
 
 Pills: green local branch, blue remote, yellow tag, white detached HEAD, grey
-anything else. The checked-out branch is bold and underlined. On GNOME the
-selection colour follows the desktop light/dark setting; elsewhere it assumes
-a dark terminal.
+anything else. The checked-out branch is bold and underlined. The selection
+colour follows the desktop light/dark setting on GNOME and macOS; set
+`GG_THEME=light` or `GG_THEME=dark` to override, or anywhere else.

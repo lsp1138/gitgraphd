@@ -131,14 +131,32 @@ fn leave() {
     let _ = disable_raw_mode();
 }
 
-/// Same check delta-auto makes: follow GNOME's colour scheme, since the
-/// terminal background cannot be read from inside tmux. Dark if unknown.
+/// Is the terminal background dark? The terminal itself cannot be asked
+/// from inside tmux, so follow the desktop: `GG_THEME=light|dark` wins,
+/// then GNOME's colour scheme, then macOS's appearance. Dark if unknown.
 fn prefers_dark() -> bool {
-    Command::new("gsettings")
-        .args(["get", "org.gnome.desktop.interface", "color-scheme"])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).contains("dark"))
-        .unwrap_or(true)
+    match std::env::var("GG_THEME").as_deref() {
+        Ok("light") => return false,
+        Ok("dark") => return true,
+        _ => {}
+    }
+    let probe = |cmd: &str, args: &[&str]| -> Option<String> {
+        Command::new(cmd)
+            .args(args)
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).to_lowercase())
+    };
+    if let Some(scheme) = probe("gsettings", &["get", "org.gnome.desktop.interface", "color-scheme"]) {
+        return scheme.contains("dark");
+    }
+    if cfg!(target_os = "macos") {
+        // Prints "Dark" in dark mode and fails in light mode.
+        return probe("defaults", &["read", "-g", "AppleInterfaceStyle"])
+            .is_some_and(|s| s.contains("dark"));
+    }
+    true
 }
 
 /// Pull whatever git has produced so far into the app, without blocking.

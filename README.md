@@ -59,6 +59,7 @@ Run `gg` inside a repository. It shows every branch, like Git Graph;
 | `G` / `End`           | last commit                          |
 | `Space` / `Enter`     | show the diff (`git show` via pager) |
 | `C`                   | check out the branch here, or commit |
+| `X`                   | delete the local branch here (asks)  |
 | `T`                   | toggle relative date / timestamp     |
 | `H`                   | copy the full hash to the clipboard  |
 | `F`                   | `git fetch --all --prune`, reload    |
@@ -68,6 +69,11 @@ Run `gg` inside a repository. It shows every branch, like Git Graph;
 branch there it creates the tracking branch the way `git checkout name`
 does; with no branch at all it checks out the commit detached. The graph
 reloads so HEAD moves. git's own message, or error, shows in the status line.
+
+`X` offers to delete a local branch on the selected commit and waits for `y`.
+It runs `git branch -d`, the safe form, so a branch with unmerged work is
+refused with git's message; delete those from the shell if you mean it.
+Remote branches are never deleted, since that is a push.
 
 `H` uses wl-copy, xclip, xsel or pbcopy when one is installed, and otherwise
 the OSC 52 escape, which most terminals and tmux pass on to the clipboard.

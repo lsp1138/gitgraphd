@@ -194,6 +194,27 @@ pub fn checkout(target: &str) -> Result<String> {
     Ok(if report.is_empty() { format!("checked out {target}") } else { report })
 }
 
+/// `git branch -d <name>`: the safe delete, which refuses unmerged work.
+pub fn delete_branch(name: &str) -> Result<String> {
+    let out = Command::new("git")
+        .args(["branch", "-d", name])
+        .stdin(Stdio::null())
+        .output()
+        .context("could not run git branch")?;
+    let text = String::from_utf8_lossy(if out.status.success() { &out.stdout } else { &out.stderr });
+    let line = text
+        .lines()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("")
+        .trim()
+        .trim_start_matches("error: ")
+        .to_string();
+    if !out.status.success() {
+        return Err(anyhow!("{}", if line.is_empty() { "git branch -d failed".into() } else { line }));
+    }
+    Ok(if line.is_empty() { format!("deleted branch {name}") } else { line })
+}
+
 /// `git fetch --all --prune` without any prompting. Returns a one-line summary.
 pub fn fetch() -> Result<String> {
     let out = Command::new("git")

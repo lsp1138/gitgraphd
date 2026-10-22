@@ -17,6 +17,8 @@ pub enum Action {
     CopyHash(String),
     /// `git checkout` this branch or commit, then reload.
     Checkout(String),
+    /// `git branch -d` this local branch, then reload.
+    DeleteBranch(String),
 }
 
 pub struct App {
@@ -48,6 +50,8 @@ pub struct App {
     pending_cursor: Option<String>,
     /// Branch names that exist on some remote; others are drawn framed.
     pub remote_branches: HashSet<String>,
+    /// A branch delete waiting for `y`.
+    pub confirm_delete: Option<String>,
     /// How graph lines are drawn.
     pub style: LineStyle,
 }
@@ -81,6 +85,7 @@ impl App {
             fetching: false,
             pending_cursor: None,
             remote_branches: HashSet::new(),
+            confirm_delete: None,
             style: LineStyle::Heavy,
         };
         for c in commits {
@@ -133,6 +138,14 @@ impl App {
     pub fn handle_key(&mut self, key: KeyEvent) -> Action {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         self.status.clear();
+        if let Some(branch) = self.confirm_delete.take() {
+            // Only y goes ahead; anything else cancels and is otherwise ignored.
+            if key.code == KeyCode::Char('y') {
+                return Action::DeleteBranch(branch);
+            }
+            self.status = "delete cancelled".into();
+            return Action::None;
+        }
         match (key.code, ctrl) {
             (KeyCode::Char('q'), _) | (KeyCode::Esc, _) | (KeyCode::Char('c'), true) => {
                 return Action::Quit;
@@ -148,6 +161,17 @@ impl App {
             (KeyCode::Char('C'), _) => {
                 if let Some(c) = self.selected() {
                     return Action::Checkout(checkout_target(c));
+                }
+            }
+            (KeyCode::Char('X'), _) => {
+                if let Some(c) = self.selected() {
+                    match c.parsed_refs().into_iter().find(|r| r.kind == RefKind::Branch && !r.is_head) {
+                        Some(r) => {
+                            self.status = format!("delete local branch '{}'? y/n", r.name);
+                            self.confirm_delete = Some(r.name);
+                        }
+                        None => self.status = "no local branch here to delete".into(),
+                    }
                 }
             }
             (KeyCode::Char('H'), _) => {

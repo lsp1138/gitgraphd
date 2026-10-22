@@ -246,6 +246,14 @@ fn run(
                 }
                 Err(e) => app.status = format!("checkout failed: {e:#}"),
             },
+            app::Action::DeleteBranch(name) => match git::delete_branch(&name) {
+                Ok(report) => {
+                    app.status = report;
+                    rx = git::stream(opts)?;
+                    app.reset();
+                }
+                Err(e) => app.status = format!("delete failed: {e:#}"),
+            },
             app::Action::Fetch => {
                 if !app.fetching {
                     app.fetching = true;

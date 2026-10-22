@@ -173,7 +173,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     frame.render_widget(Line::styled(status, style), status_area);
     frame.render_widget(
         Line::styled(
-            " j/k move  d/u page  g/G ends  Space diff  C checkout  T time  H hash  F fetch  q quit",
+            " j/k move  d/u page  g/G ends  Space diff  C checkout  X delete  T time  H hash  F fetch  q quit",
             Style::new().fg(dim),
         ),
         hints_area,

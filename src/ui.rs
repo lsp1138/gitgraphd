@@ -66,8 +66,9 @@ fn graph_spans(row: &Row, width: usize, plain: bool) -> Vec<Span<'static>> {
 }
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
-    let [list_area, status_area] =
-        Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(frame.area());
+    let [list_area, status_area, hints_area] =
+        Layout::vertical([Constraint::Fill(1), Constraint::Length(1), Constraint::Length(1)])
+            .areas(frame.area());
 
     app.height = list_area.height as usize;
     app.scroll_to_cursor();
@@ -126,6 +127,13 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         )
     };
     frame.render_widget(Line::styled(status, style), status_area);
+    frame.render_widget(
+        Line::styled(
+            " j/k move  d/u page  g/G ends  Space diff  q quit",
+            Style::new().fg(Color::DarkGray),
+        ),
+        hints_area,
+    );
 }
 
 /// Coloured pills for the refs on a commit, Git Graph style, each followed

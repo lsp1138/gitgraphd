@@ -23,7 +23,8 @@ git config.
 
 ## Use
 
-Run `gg` inside a repository. `gg --all` shows every branch, like Git Graph.
+Run `gg` inside a repository. It shows every branch, like Git Graph;
+`gg --head` shows only the checked-out history, like tig.
 
 | key                   | action                               |
 |-----------------------|--------------------------------------|
@@ -48,7 +49,7 @@ full subject, in case the row cut it off. The full message is part of what
 `Space` shows. On the root commit, `Space` shows the message and the list of
 files it added instead of the full diff, which would be the entire import.
 
-Flags: `--all`, `-n N`, `--order=date|author-date|topo` (date is the default,
+Flags: `--head`, `-n N`, `--order=date|author-date|topo` (date is the default,
 as in Git Graph; topo keeps merged branches' commits together but opens far
 more lanes on busy repositories), `--date=<git date format>`, `--ascii` for
 terminals without box-drawing glyphs, `--thin` for thin rounded lines instead

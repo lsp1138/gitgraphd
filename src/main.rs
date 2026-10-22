@@ -31,9 +31,13 @@ use crate::git::LogOpts;
 #[derive(Parser, Debug)]
 #[command(name = "gg", version, about)]
 struct Args {
-    /// Show every branch, not only HEAD history
-    #[arg(long)]
+    /// Show every branch (the default; kept for habit)
+    #[arg(long, conflicts_with = "head")]
     all: bool,
+
+    /// Show only the history of HEAD, like tig
+    #[arg(long)]
+    head: bool,
 
     /// Draw the graph with plain ASCII instead of box-drawing characters
     #[arg(long, conflicts_with = "thin")]
@@ -74,7 +78,7 @@ fn gg() -> Result<()> {
         std::env::set_current_dir(p)?;
     }
     let opts = LogOpts {
-        all: args.all,
+        all: !args.head,
         max_count: args.max_count,
         date: args.date,
         order: args.order,

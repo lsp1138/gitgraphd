@@ -159,7 +159,7 @@ M1 is a few hundred lines; M2 is the only genuinely tricky part (~300 lines).
 
 ## Decisions taken
 
-- HEAD-only by default, `--all` for every branch.
+- Every branch by default like Git Graph (changed after first use), `--head` for HEAD only.
 - Both `D` and `Enter` open the diff.
 - Relative dates by default, `--date=<format>` passes any git date format through.
 - `--date-order` by default like Git Graph, not `--topo-order`: on a repository

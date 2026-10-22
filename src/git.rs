@@ -33,6 +33,8 @@ pub struct Commit {
     pub date: String,
     /// Committer time as `YYYY-MM-DD HH:MM` in the committer's own timezone.
     pub timestamp: String,
+    /// Committer time as seconds since the epoch, for compact ages.
+    pub time: i64,
     /// Raw `%D` decoration string, e.g. `HEAD -> main, origin/main, tag: v1`.
     pub refs: String,
     pub subject: String,
@@ -79,13 +81,14 @@ impl Commit {
 
 // Committer dates, because --date-order sorts by them; author dates of
 // rebased or cherry-picked commits would look out of sequence.
-const FORMAT: &str = "--format=%H%x00%P%x00%an%x00%cd%x00%cI%x00%D%x00%s";
+const FORMAT: &str = "--format=%H%x00%P%x00%an%x00%cd%x00%cI%x00%ct%x00%D%x00%s";
 
 #[derive(Debug, Clone)]
 pub struct LogOpts {
     pub all: bool,
     pub max_count: Option<usize>,
-    pub date: String,
+    /// A git date format to show instead of the compact age.
+    pub date: Option<String>,
     pub order: String,
 }
 
@@ -96,7 +99,7 @@ pub fn stream(opts: &LogOpts) -> Result<Receiver<Result<Commit>>> {
     let mut cmd = Command::new("git");
     cmd.args(["log", "--decorate=full", FORMAT]);
     cmd.arg(format!("--{}-order", opts.order));
-    cmd.arg(format!("--date={}", opts.date));
+    cmd.arg(format!("--date={}", opts.date.as_deref().unwrap_or("relative")));
     if opts.all {
         cmd.arg("--all");
     }
@@ -242,7 +245,7 @@ pub fn fetch() -> Result<String> {
 }
 
 fn parse_line(line: &str) -> Option<Commit> {
-    let mut f = line.splitn(7, '\0');
+    let mut f = line.splitn(8, '\0');
     let hash = f.next()?.to_string();
     let parents = f
         .next()?
@@ -257,6 +260,7 @@ fn parse_line(line: &str) -> Option<Commit> {
         Some(t) => t.replacen('T', " ", 1),
         None => iso.to_string(),
     };
+    let time = f.next()?.trim().parse().unwrap_or(0);
     let refs = f.next()?.to_string();
     let subject = f.next().unwrap_or("").to_string();
     Some(Commit {
@@ -265,6 +269,7 @@ fn parse_line(line: &str) -> Option<Commit> {
         author,
         date,
         timestamp,
+        time,
         refs,
         subject,
     })
@@ -277,13 +282,14 @@ mod tests {
     #[test]
     fn parses_merge_with_refs() {
         let line =
-            "abc\0p1 p2\0Lars\02 hours ago\02026-10-22T15:14:03+01:00\0HEAD -> main, tag: v1\0Merge: a\0b";
+            "abc\0p1 p2\0Lars\02 hours ago\02026-10-22T15:14:03+01:00\01792000000\0HEAD -> main, tag: v1\0Merge: a\0b";
         let c = parse_line(line).unwrap();
         assert_eq!(c.hash, "abc");
         assert_eq!(c.parents, vec!["p1", "p2"]);
         assert_eq!(c.author, "Lars");
         assert_eq!(c.date, "2 hours ago");
         assert_eq!(c.timestamp, "2026-10-22 15:14");
+        assert_eq!(c.time, 1_792_000_000);
         assert_eq!(c.refs, "HEAD -> main, tag: v1");
         // the subject keeps any stray NULs; splitn(6) guarantees that
         assert_eq!(c.subject, "Merge: a\0b");
@@ -292,7 +298,7 @@ mod tests {
     #[test]
     fn classifies_full_refs() {
         let c = parse_line(
-            "h\0\0a\0d\0t\0HEAD -> refs/heads/main, refs/remotes/origin/main, tag: refs/tags/v1, refs/stash\0s",
+            "h\0\0a\0d\0t\00\0HEAD -> refs/heads/main, refs/remotes/origin/main, tag: refs/tags/v1, refs/stash\0s",
         )
         .unwrap();
         let refs = c.parsed_refs();
@@ -312,7 +318,7 @@ mod tests {
 
     #[test]
     fn detached_head() {
-        let c = parse_line("h\0\0a\0d\0t\0HEAD, tag: refs/tags/v2\0s").unwrap();
+        let c = parse_line("h\0\0a\0d\0t\00\0HEAD, tag: refs/tags/v2\0s").unwrap();
         let refs = c.parsed_refs();
         assert_eq!(refs[0], Ref { name: "HEAD".into(), kind: RefKind::Head, is_head: true });
         assert_eq!(refs[1].kind, RefKind::Tag);
@@ -321,7 +327,7 @@ mod tests {
 
     #[test]
     fn parses_root_commit_without_parents_or_refs() {
-        let c = parse_line("abc\0\0Lars\0now\0t\0\0init").unwrap();
+        let c = parse_line("abc\0\0Lars\0now\0t\00\0\0init").unwrap();
         assert!(c.parents.is_empty());
         assert_eq!(c.refs, "");
         assert_eq!(c.subject, "init");

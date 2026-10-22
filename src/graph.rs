@@ -298,6 +298,7 @@ mod tests {
             author: String::new(),
             date: String::new(),
             timestamp: String::new(),
+            time: 0,
             refs: String::new(),
             subject: String::new(),
         }

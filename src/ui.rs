@@ -8,7 +8,8 @@ use crate::app::{App, LineStyle};
 use crate::git::{Commit, RefKind};
 use crate::graph::Row;
 
-const AUTHOR_WIDTH: usize = 12;
+/// Longest a ref label may get before it is cut with an ellipsis.
+const MAX_PILL: usize = 28;
 /// Widest the graph column may get before rows are cut off on the right.
 const MAX_GRAPH_WIDTH: usize = 48;
 
@@ -110,6 +111,17 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     app.height = list_area.height as usize;
     app.scroll_to_cursor();
     let graph_width = app.graph.width.clamp(1, MAX_GRAPH_WIDTH);
+    // The author column gives way first as the pane narrows: full name,
+    // then first name, then nothing.
+    let author_width = match list_area.width {
+        w if w >= 120 => 12,
+        w if w >= 90 => 8,
+        _ => 0,
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
     // Secondary text: the terminal's dark grey is near-invisible on most
     // dark palettes, so use plain grey there.
     let dim = if app.dark { Color::Gray } else { Color::DarkGray };
@@ -132,13 +144,21 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             Span::styled(commit.short_hash().to_string(), Style::new().fg(Color::Yellow)),
             Span::raw("  "),
             {
-                let (text, width) = app.date_column(commit);
-                Span::styled(pad_right(text, width), Style::new().fg(dim))
+                let (text, width, right) = app.date_column(commit, now);
+                let padded = if right { pad_left(&text, width) } else { pad_right(&text, width) };
+                Span::styled(padded, Style::new().fg(dim))
             },
             Span::raw("  "),
-            Span::styled(pad_right(&commit.author, AUTHOR_WIDTH), Style::new().fg(Color::Cyan)),
-            Span::raw("  "),
         ]);
+        if author_width > 0 {
+            let name = if author_width < 12 {
+                commit.author.split_whitespace().next().unwrap_or("")
+            } else {
+                commit.author.as_str()
+            };
+            spans.push(Span::styled(pad_right(name, author_width), Style::new().fg(Color::Cyan)));
+            spans.push(Span::raw("  "));
+        }
         spans.extend(ref_pills(commit, app.rows[index].node_colour(), &app.remote_branches));
         spans.push(Span::styled(
                 commit.subject.clone(),
@@ -224,27 +244,29 @@ fn ref_pills(
         if local.is_head {
             style = style.add_modifier(head_mark);
         }
+        let name = clip(&local.name);
         let label = if !on.is_empty() {
-            format!(" {} │ {} ", local.name, on.join(" "))
+            format!(" {name} │ {} ", on.join(" "))
         } else if pushed {
-            format!(" {} ", local.name)
+            format!(" {name} ")
         } else {
-            format!("[ {} ]", local.name)
+            format!("[ {name} ]")
         };
         pills.push(Span::styled(label, style));
     }
     for (remote, branch) in remotes {
-        pills.push(Span::styled(format!(" {remote}/{branch} "), filled));
+        pills.push(Span::styled(format!(" {} ", clip(&format!("{remote}/{branch}"))), filled));
     }
     for r in refs.iter().filter(|r| matches!(r.kind, RefKind::Head | RefKind::Tag | RefKind::Other)) {
         let mut style = if r.kind == RefKind::Other { framed } else { filled };
         if r.is_head {
             style = style.add_modifier(head_mark);
         }
+        let name = clip(&r.name);
         let label = match r.kind {
-            RefKind::Tag => format!(" tag: {} ", r.name),
-            RefKind::Other => format!("[ {} ]", r.name),
-            _ => format!(" {} ", r.name),
+            RefKind::Tag => format!(" tag: {name} "),
+            RefKind::Other => format!("[ {name} ]"),
+            _ => format!(" {name} "),
         };
         pills.push(Span::styled(label, style));
     }
@@ -255,6 +277,25 @@ fn ref_pills(
         spans.push(Span::raw(" "));
     }
     spans
+}
+
+/// Pad on the left to `width` columns.
+fn pad_left(s: &str, width: usize) -> String {
+    let w = UnicodeWidthStr::width(s);
+    let mut out: String = std::iter::repeat_n(' ', width.saturating_sub(w)).collect();
+    out.push_str(s);
+    out
+}
+
+/// Cut a ref name to `MAX_PILL` columns with an ellipsis.
+fn clip(name: &str) -> String {
+    if UnicodeWidthStr::width(name) <= MAX_PILL {
+        return name.to_string();
+    }
+    let mut out = pad_right(name, MAX_PILL - 1);
+    out.truncate(out.trim_end().len());
+    out.push('…');
+    out
 }
 
 /// Truncate to `width` columns and pad on the right.

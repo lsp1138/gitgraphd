@@ -56,9 +56,10 @@ struct Args {
     #[arg(long, default_value = "date", value_name = "ORDER")]
     order: String,
 
-    /// Date format for git log: relative, short, iso, human, ...
-    #[arg(long, default_value = "relative", value_name = "FORMAT")]
-    date: String,
+    /// Show dates in a git date format (relative, short, iso, human, ...)
+    /// instead of the compact age column
+    #[arg(long, value_name = "FORMAT")]
+    date: Option<String>,
 
     /// Repository to open (default: current directory)
     path: Option<std::path::PathBuf>,
@@ -81,7 +82,7 @@ fn gg() -> Result<()> {
     let opts = LogOpts {
         all: !args.head,
         max_count: args.max_count,
-        date: args.date,
+        date: args.date.clone(),
         order: args.order,
     };
 
@@ -100,6 +101,7 @@ fn gg() -> Result<()> {
         app::LineStyle::Heavy
     };
     app.dark = prefers_dark();
+    app.git_dates = args.date.is_some();
 
     // Wait for the first commit before taking over the screen, so a bad
     // repository fails on stderr like any other git command would.

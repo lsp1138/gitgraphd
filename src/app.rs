@@ -36,8 +36,10 @@ pub struct App {
     /// Widest relative date and widest timestamp loaded so far.
     pub date_width: usize,
     pub timestamp_width: usize,
-    /// Show the absolute timestamp instead of git's relative date.
+    /// Show the absolute timestamp instead of the age.
     pub show_timestamp: bool,
+    /// Show git's own date string (`--date=` given) instead of compact ages.
+    pub git_dates: bool,
     /// Terminal background is dark; picks the selection colour.
     pub dark: bool,
     /// Sticky error from the git log stream, shown until quit.
@@ -79,6 +81,7 @@ impl App {
             date_width: 0,
             timestamp_width: 0,
             show_timestamp: false,
+            git_dates: false,
             dark: true,
             error: None,
             loading: false,
@@ -126,12 +129,15 @@ impl App {
         self.commits.get(self.cursor)
     }
 
-    /// The date column's text for a commit, and the column's width.
-    pub fn date_column<'a>(&'a self, c: &'a Commit) -> (&'a str, usize) {
+    /// The date column's text for a commit, the column's width, and whether
+    /// it is right-aligned (compact ages are).
+    pub fn date_column(&self, c: &Commit, now: i64) -> (String, usize, bool) {
         if self.show_timestamp {
-            (&c.timestamp, self.timestamp_width)
+            (c.timestamp.clone(), self.timestamp_width, false)
+        } else if self.git_dates {
+            (c.date.clone(), self.date_width, false)
         } else {
-            (&c.date, self.date_width)
+            (compact_age(now - c.time), 4, true)
         }
     }
 
@@ -259,4 +265,46 @@ fn checkout_target(c: &Commit) -> String {
         }
     }
     c.hash.clone()
+}
+
+/// `34s`, `11m`, `2h`, `9d`, `2w`, `3mo`, `1y`: at most four characters.
+pub fn compact_age(secs: i64) -> String {
+    let s = secs.max(0);
+    let (n, unit) = if s < 60 {
+        (s, "s")
+    } else if s < 3600 {
+        (s / 60, "m")
+    } else if s < 86_400 {
+        (s / 3600, "h")
+    } else if s < 14 * 86_400 {
+        (s / 86_400, "d")
+    } else if s < 60 * 86_400 {
+        (s / (7 * 86_400), "w")
+    } else if s < 365 * 86_400 {
+        (s / (30 * 86_400), "mo")
+    } else {
+        (s / (365 * 86_400), "y")
+    };
+    format!("{n}{unit}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compact_age;
+
+    #[test]
+    fn compact_ages() {
+        assert_eq!(compact_age(0), "0s");
+        assert_eq!(compact_age(34), "34s");
+        assert_eq!(compact_age(11 * 60), "11m");
+        assert_eq!(compact_age(2 * 3600 + 59), "2h");
+        assert_eq!(compact_age(9 * 86_400), "9d");
+        assert_eq!(compact_age(13 * 86_400), "13d");
+        assert_eq!(compact_age(20 * 86_400), "2w");
+        assert_eq!(compact_age(59 * 86_400), "8w");
+        assert_eq!(compact_age(100 * 86_400), "3mo");
+        assert_eq!(compact_age(364 * 86_400), "12mo");
+        assert_eq!(compact_age(800 * 86_400), "2y");
+        assert_eq!(compact_age(-5), "0s");
+    }
 }

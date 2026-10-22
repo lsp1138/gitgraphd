@@ -60,7 +60,7 @@ Run `gg` inside a repository. It shows every branch, like Git Graph;
 | `Space` / `Enter`     | show the diff (`git show` via pager) |
 | `C`                   | check out the branch here, or commit |
 | `X`                   | delete the local branch here (asks)  |
-| `T`                   | toggle relative date / timestamp     |
+| `T`                   | toggle compact age / full timestamp  |
 | `H`                   | copy the full hash to the clipboard  |
 | `F`                   | `git fetch --all --prune`, reload    |
 | `q` / `Esc`           | quit                                 |
@@ -89,6 +89,12 @@ The line above the key hints shows the position and the selected commit's
 full subject, in case the row cut it off. The full message is part of what
 `Space` shows. On the root commit, `Space` shows the message and the list of
 files it added instead of the full diff, which would be the entire import.
+
+The date column is a compact age (`34s`, `2h`, `9d`, `2w`, `3mo`, `1y`);
+`T` switches to the full timestamp, and `--date=<format>` shows git's own
+date string instead. The author column shows the full name on a wide pane,
+the first name on a medium one, and nothing on a narrow one. Long ref names
+are cut with an ellipsis.
 
 Flags: `--head`, `-n N`, `--order=date|author-date|topo` (date is the default,
 as in Git Graph; topo keeps merged branches' commits together but opens far

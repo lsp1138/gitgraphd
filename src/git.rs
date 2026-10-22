@@ -17,6 +17,11 @@ impl Commit {
     pub fn short_hash(&self) -> &str {
         &self.hash[..self.hash.len().min(7)]
     }
+
+    /// True for the commit HEAD points at, attached or detached.
+    pub fn is_head(&self) -> bool {
+        self.refs == "HEAD" || self.refs.starts_with("HEAD -> ") || self.refs.starts_with("HEAD, ")
+    }
 }
 
 const FORMAT: &str = "--format=%H%x00%P%x00%an%x00%ad%x00%D%x00%s";

@@ -1,5 +1,6 @@
 mod app;
 mod git;
+mod graph;
 mod pager;
 mod ui;
 

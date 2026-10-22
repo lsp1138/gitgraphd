@@ -1,6 +1,7 @@
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::git::Commit;
+use crate::graph::{Graph, Row};
 
 pub enum Action {
     None,
@@ -10,6 +11,9 @@ pub enum Action {
 
 pub struct App {
     pub commits: Vec<Commit>,
+    /// One graph row per commit, same indexing as `commits`.
+    pub rows: Vec<Row>,
+    pub graph: Graph,
     /// Index of the selected commit.
     pub cursor: usize,
     /// Index of the first visible row.
@@ -21,13 +25,25 @@ pub struct App {
 
 impl App {
     pub fn new(commits: Vec<Commit>) -> Self {
-        Self {
-            commits,
+        let mut app = Self {
+            commits: Vec::with_capacity(commits.len()),
+            rows: Vec::with_capacity(commits.len()),
+            graph: Graph::new(),
             cursor: 0,
             offset: 0,
             height: 1,
             status: String::new(),
+        };
+        for c in commits {
+            app.push(c);
         }
+        app
+    }
+
+    /// Append one commit (they must arrive in topological order).
+    pub fn push(&mut self, commit: Commit) {
+        self.rows.push(self.graph.push(&commit));
+        self.commits.push(commit);
     }
 
     pub fn selected(&self) -> Option<&Commit> {

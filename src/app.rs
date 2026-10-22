@@ -7,6 +7,8 @@ use crate::graph::{Graph, Row};
 pub enum Action {
     None,
     Quit,
+    /// Run `git fetch` in the background and reload when it is done.
+    Fetch,
     /// Show the diff of this hash; `stat` asks for the file summary only.
     ShowDiff { hash: String, stat: bool },
 }
@@ -31,6 +33,10 @@ pub struct App {
     pub error: Option<String>,
     /// True while git log is still producing commits.
     pub loading: bool,
+    /// True while a background `git fetch` runs.
+    pub fetching: bool,
+    /// After a reload, put the cursor back on this commit when it arrives.
+    pending_cursor: Option<String>,
     /// Draw the graph with `* | / \` instead of box-drawing glyphs.
     pub ascii: bool,
 }
@@ -49,6 +55,8 @@ impl App {
             dark: true,
             error: None,
             loading: false,
+            fetching: false,
+            pending_cursor: None,
             ascii: false,
         };
         for c in commits {
@@ -57,11 +65,29 @@ impl App {
         app
     }
 
-    /// Append one commit (they must arrive in topological order).
+    /// Append one commit (they must arrive in git log order).
     pub fn push(&mut self, commit: Commit) {
+        if self.pending_cursor.as_deref() == Some(commit.hash.as_str()) {
+            self.pending_cursor = None;
+            self.cursor = self.commits.len();
+            self.scroll_to_cursor();
+        }
         self.date_width = self.date_width.max(UnicodeWidthStr::width(commit.date.as_str()));
         self.rows.push(self.graph.push(&commit));
         self.commits.push(commit);
+    }
+
+    /// Drop the history ahead of a reload, remembering where the cursor was.
+    pub fn reset(&mut self) {
+        self.pending_cursor = self.selected().map(|c| c.hash.clone());
+        self.commits.clear();
+        self.rows.clear();
+        self.graph = Graph::new();
+        self.cursor = 0;
+        self.offset = 0;
+        self.date_width = 0;
+        self.error = None;
+        self.loading = true;
     }
 
     pub fn selected(&self) -> Option<&Commit> {
@@ -81,6 +107,7 @@ impl App {
             (KeyCode::Char('u'), _) | (KeyCode::PageUp, _) => self.move_by(-self.half_page()),
             (KeyCode::Char('g'), false) | (KeyCode::Home, _) => self.move_to(0),
             (KeyCode::Char('G'), _) | (KeyCode::End, _) => self.move_to(usize::MAX),
+            (KeyCode::Char('F'), _) => return Action::Fetch,
             (KeyCode::Char(' '), _) | (KeyCode::Enter, _) => {
                 if let Some(c) = self.selected() {
                     // The root commit's diff is the whole initial import, so
@@ -110,6 +137,26 @@ impl App {
         }
         self.cursor = index.min(self.commits.len() - 1);
         self.scroll_to_cursor();
+    }
+
+    /// Scroll the window by `delta` rows (mouse wheel); the cursor stays
+    /// where it is unless it would leave the window.
+    pub fn scroll_view(&mut self, delta: isize) {
+        if self.commits.is_empty() {
+            return;
+        }
+        let h = self.height.max(1);
+        let max_offset = self.commits.len().saturating_sub(h) as isize;
+        self.offset = (self.offset as isize + delta).clamp(0, max_offset) as usize;
+        let last_visible = (self.offset + h - 1).min(self.commits.len() - 1);
+        self.cursor = self.cursor.clamp(self.offset, last_visible);
+    }
+
+    /// Select the commit drawn on screen row `row` (0 = top), if any.
+    pub fn select_row(&mut self, row: usize) {
+        if row < self.height && self.offset + row < self.commits.len() {
+            self.cursor = self.offset + row;
+        }
     }
 
     /// Keep the cursor inside the visible window.

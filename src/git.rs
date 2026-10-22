@@ -76,23 +76,26 @@ impl Commit {
 
 const FORMAT: &str = "--format=%H%x00%P%x00%an%x00%ad%x00%D%x00%s";
 
-/// Start `git log` and stream its commits, in topological order, through a
-/// channel. If git fails, the last message is the error; the channel closes
-/// once git is done. Dropping the receiver kills git.
-pub fn stream(
-    all: bool,
-    max_count: Option<usize>,
-    date: &str,
-    order: &str,
-) -> Result<Receiver<Result<Commit>>> {
+#[derive(Debug, Clone)]
+pub struct LogOpts {
+    pub all: bool,
+    pub max_count: Option<usize>,
+    pub date: String,
+    pub order: String,
+}
+
+/// Start `git log` and stream its commits through a channel. If git fails,
+/// the last message is the error; the channel closes once git is done.
+/// Dropping the receiver kills git.
+pub fn stream(opts: &LogOpts) -> Result<Receiver<Result<Commit>>> {
     let mut cmd = Command::new("git");
     cmd.args(["log", "--decorate=full", FORMAT]);
-    cmd.arg(format!("--{order}-order"));
-    cmd.arg(format!("--date={date}"));
-    if all {
+    cmd.arg(format!("--{}-order", opts.order));
+    cmd.arg(format!("--date={}", opts.date));
+    if opts.all {
         cmd.arg("--all");
     }
-    if let Some(n) = max_count {
+    if let Some(n) = opts.max_count {
         cmd.arg(format!("--max-count={n}"));
     }
     let mut child = cmd
@@ -129,6 +132,32 @@ pub fn stream(
         let _ = tx.send(Err(outcome));
     });
     Ok(rx)
+}
+
+/// `git fetch --all` without any prompting. Returns a one-line summary.
+pub fn fetch() -> Result<String> {
+    let out = Command::new("git")
+        .args(["fetch", "--all"])
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(Stdio::null())
+        .output()
+        .context("could not run git fetch")?;
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    if !out.status.success() {
+        let reason = stderr
+            .lines()
+            .rev()
+            .find(|l| !l.trim().is_empty())
+            .unwrap_or("git fetch failed");
+        return Err(anyhow!("{}", reason.trim()));
+    }
+    // git reports each updated ref on its own line containing "->".
+    let updated = stderr.lines().filter(|l| l.contains("->")).count();
+    Ok(match updated {
+        0 => "fetched: already up to date".to_string(),
+        1 => "fetched: 1 ref updated".to_string(),
+        n => format!("fetched: {n} refs updated"),
+    })
 }
 
 fn parse_line(line: &str) -> Option<Commit> {

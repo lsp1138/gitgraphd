@@ -13,7 +13,14 @@ pub fn show(hash: &str, stat: bool) -> Result<()> {
     {
         cmd.arg("-c").arg(format!("core.pager={pager}"));
     }
-    cmd.arg("show");
+    // Two things make a short diff vanish before we get the screen back:
+    // git sets LESS=FRX when LESS is unset (F = quit if one screen), and
+    // delta's default paging mode adds --quit-if-one-screen on its own.
+    // Give less a LESS of our own, with mouse/trackpad scrolling, and tell
+    // delta to always page (a no-op for any other pager).
+    let less = std::env::var("LESS").unwrap_or_default();
+    cmd.env("LESS", format!("{less} -R --mouse").trim().to_string());
+    cmd.args(["-c", "delta.paging=always", "show"]);
     if stat {
         cmd.arg("--stat");
     }

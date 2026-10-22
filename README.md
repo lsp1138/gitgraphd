@@ -34,7 +34,12 @@ Run `gg` inside a repository. `gg --all` shows every branch, like Git Graph.
 | `g` / `Home`          | first commit                         |
 | `G` / `End`           | last commit                          |
 | `Space` / `Enter`     | show the diff (`git show` via pager) |
+| `F`                   | `git fetch --all`, then reload       |
 | `q` / `Esc`           | quit                                 |
+
+The mouse wheel or trackpad scrolls the list, and a click selects a row. In
+the diff, less gets `--mouse` so it scrolls there too. Because the terminal
+is in mouse mode, hold Shift to select text while gg is running.
 
 Inside the diff you are in git's pager, so `q` returns to the list.
 
@@ -50,5 +55,19 @@ terminals without box-drawing glyphs, and an optional repository path.
 
 `GG_PAGER` overrides the pager for gg only, for example `GG_PAGER=less`.
 
-The selection colour follows GNOME's light/dark setting, the same way the
-`delta-auto` wrapper does.
+For the pager it launches, gg sets `LESS` to `-R --mouse` (on top of your own
+value) and passes `delta.paging=always`, so a diff that fits on one screen
+still waits for `q` instead of flashing past.
+
+## Colours
+
+Graph colours follow lines, as in Git Graph: a line is a commit and its
+first-parent chain until it ends by merging into another line. A new line
+takes the lowest colour no live line is using, from Git Graph's default
+twelve-colour palette. A feature branch sitting directly on top of dev is the
+same line as dev and shares its colour; one that diverged gets its own.
+
+Pills: green local branch, blue remote, yellow tag, white detached HEAD, grey
+anything else. The checked-out branch is bold and underlined. The selection
+colour follows GNOME's light/dark setting, the same way the `delta-auto`
+wrapper does.

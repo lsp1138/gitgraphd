@@ -4,13 +4,27 @@ mod graph;
 mod pager;
 mod ui;
 
+use std::io::{Stdout, stdout};
 use std::process::Command;
-use std::sync::mpsc::{Receiver, TryRecvError};
+use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::thread;
 use std::time::Duration;
 
 use anyhow::Result;
 use clap::Parser;
-use ratatui::crossterm::event::{self, Event, KeyEventKind};
+use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
+use ratatui::crossterm::cursor::{Hide, Show};
+use ratatui::crossterm::event::{
+    self, DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind, MouseButton,
+    MouseEventKind,
+};
+use ratatui::crossterm::execute;
+use ratatui::crossterm::terminal::{
+    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+};
+
+use crate::git::LogOpts;
 
 /// Commit graph + delta. Nothing else.
 #[derive(Parser, Debug)]
@@ -40,6 +54,8 @@ struct Args {
     path: Option<std::path::PathBuf>,
 }
 
+type Term = Terminal<CrosstermBackend<Stdout>>;
+
 fn main() {
     if let Err(e) = gg() {
         eprintln!("gg: {e:#}");
@@ -52,8 +68,14 @@ fn gg() -> Result<()> {
     if let Some(p) = &args.path {
         std::env::set_current_dir(p)?;
     }
+    let opts = LogOpts {
+        all: args.all,
+        max_count: args.max_count,
+        date: args.date,
+        order: args.order,
+    };
 
-    let rx = git::stream(args.all, args.max_count, &args.date, &args.order)?;
+    let rx = git::stream(&opts)?;
     let mut app = app::App::new(Vec::new());
     app.ascii = args.ascii;
     app.dark = prefers_dark();
@@ -69,10 +91,29 @@ fn gg() -> Result<()> {
         Err(_) => {}
     }
 
-    let mut terminal = ratatui::init();
-    let result = run(&mut terminal, &mut app, &rx);
-    ratatui::restore();
+    // Put the terminal back before the default panic message prints.
+    let hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        leave();
+        hook(info);
+    }));
+
+    let mut terminal = enter()?;
+    let result = run(&mut terminal, &mut app, &opts, rx);
+    leave();
     result
+}
+
+/// Raw mode, alternate screen, mouse reporting, hidden cursor.
+fn enter() -> Result<Term> {
+    enable_raw_mode()?;
+    execute!(stdout(), EnterAlternateScreen, EnableMouseCapture, Hide)?;
+    Ok(Terminal::new(CrosstermBackend::new(stdout()))?)
+}
+
+fn leave() {
+    let _ = execute!(stdout(), DisableMouseCapture, Show, LeaveAlternateScreen);
+    let _ = disable_raw_mode();
 }
 
 /// Same check delta-auto makes: follow GNOME's colour scheme, since the
@@ -101,35 +142,69 @@ fn drain(app: &mut app::App, rx: &Receiver<Result<git::Commit>>) {
 }
 
 fn run(
-    terminal: &mut ratatui::DefaultTerminal,
+    terminal: &mut Term,
     app: &mut app::App,
-    rx: &Receiver<Result<git::Commit>>,
+    opts: &LogOpts,
+    mut rx: Receiver<Result<git::Commit>>,
 ) -> Result<()> {
+    let (fetch_tx, fetch_rx) = mpsc::channel::<Result<String>>();
     loop {
         if app.loading {
-            drain(app, rx);
+            drain(app, &rx);
+        }
+        if let Ok(outcome) = fetch_rx.try_recv() {
+            app.fetching = false;
+            match outcome {
+                Ok(summary) => {
+                    app.status = summary;
+                    rx = git::stream(opts)?;
+                    app.reset();
+                }
+                Err(e) => app.status = format!("fetch failed: {e:#}"),
+            }
         }
         terminal.draw(|frame| ui::draw(frame, app))?;
 
-        let tick = Duration::from_millis(if app.loading { 30 } else { 250 });
+        let busy = app.loading || app.fetching;
+        let tick = Duration::from_millis(if busy { 30 } else { 250 });
         if !event::poll(tick)? {
             continue;
         }
-        let Event::Key(key) = event::read()? else {
-            continue;
+        let action = match event::read()? {
+            Event::Key(key) if key.kind == KeyEventKind::Press => app.handle_key(key),
+            Event::Mouse(m) => {
+                match m.kind {
+                    MouseEventKind::ScrollDown => app.scroll_view(3),
+                    MouseEventKind::ScrollUp => app.scroll_view(-3),
+                    MouseEventKind::Down(MouseButton::Left) => app.select_row(m.row as usize),
+                    _ => {}
+                }
+                app::Action::None
+            }
+            _ => app::Action::None,
         };
-        if key.kind != KeyEventKind::Press {
-            continue;
-        }
 
-        match app.handle_key(key) {
+        match action {
             app::Action::None => {}
             app::Action::Quit => return Ok(()),
+            app::Action::Fetch => {
+                if !app.fetching {
+                    app.fetching = true;
+                    let tx = fetch_tx.clone();
+                    thread::spawn(move || {
+                        let _ = tx.send(git::fetch());
+                    });
+                }
+            }
             app::Action::ShowDiff { hash, stat } => {
-                // Hand the real terminal to git/delta/less, then take it back.
-                ratatui::restore();
+                // Hand the terminal to git's pager without leaving the
+                // alternate screen, so the shell never shows through. less
+                // drops back to the main screen on exit; re-enter at once.
+                let _ = execute!(stdout(), DisableMouseCapture, Show);
+                let _ = disable_raw_mode();
                 let outcome = pager::show(&hash, stat);
-                *terminal = ratatui::init();
+                let _ = enable_raw_mode();
+                let _ = execute!(stdout(), EnterAlternateScreen, EnableMouseCapture, Hide);
                 terminal.clear()?;
                 if let Err(e) = outcome {
                     app.status = format!("diff failed: {e:#}");

@@ -12,20 +12,25 @@ const AUTHOR_WIDTH: usize = 12;
 /// Widest the graph column may get before rows are cut off on the right.
 const MAX_GRAPH_WIDTH: usize = 48;
 
-/// Git Graph's default lane colours, cycled by lane index.
-const PALETTE: [Color; 8] = [
+/// Git Graph's default graph colours, taken by line in the order lines
+/// are created; wraps around after the twelfth.
+const PALETTE: [Color; 12] = [
     Color::Rgb(0x00, 0x85, 0xd9),
     Color::Rgb(0xd9, 0x00, 0x8f),
     Color::Rgb(0x00, 0xd9, 0x0a),
     Color::Rgb(0xd9, 0x85, 0x00),
     Color::Rgb(0xa3, 0x00, 0xd9),
     Color::Rgb(0xff, 0x00, 0x00),
-    Color::Rgb(0x00, 0xd9, 0xd9),
-    Color::Rgb(0xd9, 0xd9, 0x00),
+    Color::Rgb(0x00, 0xd9, 0xcc),
+    Color::Rgb(0xe1, 0x38, 0xe8),
+    Color::Rgb(0x85, 0xd9, 0x00),
+    Color::Rgb(0xdc, 0x5b, 0x23),
+    Color::Rgb(0x6f, 0x24, 0xd6),
+    Color::Rgb(0xff, 0xcc, 0x00),
 ];
 
-fn lane_color(lane: usize) -> Color {
-    PALETTE[lane % PALETTE.len()]
+fn line_color(colour: usize) -> Color {
+    PALETTE[colour % PALETTE.len()]
 }
 
 /// Plain-ASCII stand-in for each box-drawing glyph.
@@ -47,16 +52,16 @@ fn ascii(ch: char) -> char {
 fn graph_spans(row: &Row, width: usize, plain: bool) -> Vec<Span<'static>> {
     let mut spans = Vec::with_capacity(row.cells.len() + 1);
     let mut run = String::new();
-    let mut run_lane = usize::MAX;
+    let mut run_colour = usize::MAX;
     for cell in row.cells.iter().take(width) {
-        if cell.lane != run_lane && !run.is_empty() {
-            spans.push(Span::styled(std::mem::take(&mut run), Style::new().fg(lane_color(run_lane))));
+        if cell.colour != run_colour && !run.is_empty() {
+            spans.push(Span::styled(std::mem::take(&mut run), Style::new().fg(line_color(run_colour))));
         }
-        run_lane = cell.lane;
+        run_colour = cell.colour;
         run.push(if plain { ascii(cell.ch) } else { cell.ch });
     }
     if !run.is_empty() {
-        spans.push(Span::styled(run, Style::new().fg(lane_color(run_lane))));
+        spans.push(Span::styled(run, Style::new().fg(line_color(run_colour))));
     }
     let used = row.cells.len().min(width);
     if used < width {
@@ -118,10 +123,11 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         let subject = app.selected().map(|c| c.subject.as_str()).unwrap_or("");
         (
             format!(
-                "[{}/{}{}]  {subject}",
+                "[{}/{}{}]  {}{subject}",
                 (app.cursor + 1).min(app.commits.len()),
                 app.commits.len(),
                 if app.loading { "+" } else { "" },
+                if app.fetching { "fetching...  " } else { "" },
             ),
             Style::new().add_modifier(Modifier::REVERSED),
         )
@@ -129,7 +135,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     frame.render_widget(Line::styled(status, style), status_area);
     frame.render_widget(
         Line::styled(
-            " j/k move  d/u page  g/G ends  Space diff  q quit",
+            " j/k move  d/u page  g/G ends  Space diff  F fetch  q quit",
             Style::new().fg(Color::DarkGray),
         ),
         hints_area,

@@ -155,6 +155,23 @@ pub fn remote_branches() -> std::collections::HashSet<String> {
         .collect()
 }
 
+/// True when git has a pager of its own configured (config or environment).
+pub fn has_pager_config() -> bool {
+    if ["GIT_PAGER", "PAGER"].iter().any(|v| std::env::var_os(v).is_some_and(|p| !p.is_empty())) {
+        return true;
+    }
+    Command::new("git")
+        .args(["config", "--get", "core.pager"])
+        .output()
+        .is_ok_and(|o| o.status.success() && !o.stdout.is_empty())
+}
+
+/// Is `delta` somewhere on the PATH?
+pub fn delta_on_path() -> bool {
+    let Some(path) = std::env::var_os("PATH") else { return false };
+    std::env::split_paths(&path).any(|dir| dir.join("delta").is_file())
+}
+
 /// `git fetch --all --prune` without any prompting. Returns a one-line summary.
 pub fn fetch() -> Result<String> {
     let out = Command::new("git")

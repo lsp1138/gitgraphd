@@ -20,7 +20,15 @@ cargo install gitgraphd
 or from a checkout, `cargo install --path .`. Either way the binary is `gg`
 in `~/.cargo/bin`. It needs `git` on the PATH and uses whatever `core.pager`
 git is configured with, so if you already use delta for `git diff`, `gg`
-uses it too. Any pager works; delta just looks best.
+uses it too. Any pager works; delta is recommended because it looks best:
+
+```
+cargo install git-delta
+git config --global core.pager delta
+```
+
+Without delta, diffs show in git's own colours through less, and gg says so
+once in the status line.
 
 ## Status
 

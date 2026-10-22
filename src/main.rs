@@ -88,6 +88,10 @@ fn gg() -> Result<()> {
     let rx = git::stream(&opts)?;
     let mut app = app::App::new(Vec::new());
     app.remote_branches = git::remote_branches();
+    // Nudge once; anyone who chose their own pager never sees this.
+    if !git::has_pager_config() && !git::delta_on_path() {
+        app.status = "diffs use plain git colours; install delta for the full look: cargo install git-delta".into();
+    }
     app.style = if args.ascii {
         app::LineStyle::Ascii
     } else if args.thin {
@@ -193,6 +197,10 @@ fn run(
                 Ok(summary) => {
                     app.status = summary;
                     app.remote_branches = git::remote_branches();
+    // Nudge once; anyone who chose their own pager never sees this.
+    if !git::has_pager_config() && !git::delta_on_path() {
+        app.status = "diffs use plain git colours; install delta for the full look: cargo install git-delta".into();
+    }
                     rx = git::stream(opts)?;
                     app.reset();
                 }

@@ -117,8 +117,8 @@ colour across the whole line, tig-style.
 |------------------------|----------------------------------|
 | `j` / `↓`              | next commit                      |
 | `k` / `↑`              | previous commit                  |
-| `D` / `Ctrl-d`         | half page down                   |
-| `U` / `Ctrl-u`         | half page up                     |
+| `d` / `Ctrl-d`         | half page down                   |
+| `u` / `Ctrl-u`         | half page up                     |
 | `g` / `Home`           | first commit                     |
 | `G` / `End`            | last loaded commit               |
 | `Space` / `Enter`      | show diff of selected commit in delta |
@@ -166,4 +166,4 @@ M1 is a few hundred lines; M2 is the only genuinely tricky part (~300 lines).
   with many merged branches topo order emits each merged branch long after its
   merge, so lanes stay open for pages and the graph hits the width cap.
   `--order=topo` is still available.
-- Keys revised after first use: `D`/`U` page, `Space` opens the diff.
+- Keys revised after first use: `d`/`u` page, `Space` opens the diff.

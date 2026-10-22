@@ -76,12 +76,8 @@ impl App {
             }
             (KeyCode::Char('j'), false) | (KeyCode::Down, _) => self.move_by(1),
             (KeyCode::Char('k'), false) | (KeyCode::Up, _) => self.move_by(-1),
-            (KeyCode::Char('D'), _) | (KeyCode::Char('d'), true) | (KeyCode::PageDown, _) => {
-                self.move_by(self.half_page())
-            }
-            (KeyCode::Char('U'), _) | (KeyCode::Char('u'), true) | (KeyCode::PageUp, _) => {
-                self.move_by(-self.half_page())
-            }
+            (KeyCode::Char('d'), _) | (KeyCode::PageDown, _) => self.move_by(self.half_page()),
+            (KeyCode::Char('u'), _) | (KeyCode::PageUp, _) => self.move_by(-self.half_page()),
             (KeyCode::Char('g'), false) | (KeyCode::Home, _) => self.move_to(0),
             (KeyCode::Char('G'), _) | (KeyCode::End, _) => self.move_to(usize::MAX),
             (KeyCode::Char(' '), _) | (KeyCode::Enter, _) => {

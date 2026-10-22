@@ -29,8 +29,8 @@ Run `gg` inside a repository. `gg --all` shows every branch, like Git Graph.
 |-----------------------|--------------------------------------|
 | `j` / `↓`             | next commit                          |
 | `k` / `↑`             | previous commit                      |
-| `D` / `Ctrl-d`        | half page down                       |
-| `U` / `Ctrl-u`        | half page up                         |
+| `d` / `Ctrl-d`        | half page down                       |
+| `u` / `Ctrl-u`        | half page up                         |
 | `g` / `Home`          | first commit                         |
 | `G` / `End`           | last commit                          |
 | `Space` / `Enter`     | show the diff (`git show` via pager) |

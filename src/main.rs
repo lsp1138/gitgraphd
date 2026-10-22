@@ -14,14 +14,15 @@ use anyhow::Result;
 use clap::Parser;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
-use ratatui::crossterm::cursor::{Hide, Show};
+use ratatui::crossterm::cursor::{Hide, MoveTo, Show};
 use ratatui::crossterm::event::{
     self, DisableMouseCapture, EnableMouseCapture, Event, KeyEventKind, MouseButton,
     MouseEventKind,
 };
 use ratatui::crossterm::execute;
 use ratatui::crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+    Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode,
+    enable_raw_mode,
 };
 
 use crate::git::LogOpts;
@@ -198,9 +199,16 @@ fn run(
             }
             app::Action::ShowDiff { hash, stat } => {
                 // Hand the terminal to git's pager without leaving the
-                // alternate screen, so the shell never shows through. less
-                // drops back to the main screen on exit; re-enter at once.
-                let _ = execute!(stdout(), DisableMouseCapture, Show);
+                // alternate screen, so the shell never shows through; clear
+                // it first so nothing of the list shows under a short diff.
+                // less drops back to the main screen on exit; re-enter at once.
+                let _ = execute!(
+                    stdout(),
+                    DisableMouseCapture,
+                    Clear(ClearType::All),
+                    MoveTo(0, 0),
+                    Show
+                );
                 let _ = disable_raw_mode();
                 let outcome = pager::show(&hash, stat);
                 let _ = enable_raw_mode();

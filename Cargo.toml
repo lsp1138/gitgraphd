@@ -10,6 +10,7 @@ readme = "README.md"
 keywords = ["git", "tui", "graph", "tig", "delta"]
 categories = ["command-line-utilities", "development-tools"]
 rust-version = "1.88"
+exclude = ["PLAN.md"]
 
 [[bin]]
 name = "gg"

@@ -237,6 +237,15 @@ fn run(
                     Err(e) => format!("copy failed: {e:#}"),
                 };
             }
+            app::Action::Checkout(target) => match git::checkout(&target) {
+                Ok(report) => {
+                    app.status = report;
+                    app.remote_branches = git::remote_branches();
+                    rx = git::stream(opts)?;
+                    app.reset();
+                }
+                Err(e) => app.status = format!("checkout failed: {e:#}"),
+            },
             app::Action::Fetch => {
                 if !app.fetching {
                     app.fetching = true;

@@ -172,6 +172,28 @@ pub fn delta_on_path() -> bool {
     std::env::split_paths(&path).any(|dir| dir.join("delta").is_file())
 }
 
+/// `git checkout <target>`; returns git's own one-line report.
+pub fn checkout(target: &str) -> Result<String> {
+    let out = Command::new("git")
+        .args(["checkout", target])
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(Stdio::null())
+        .output()
+        .context("could not run git checkout")?;
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let report = stderr
+        .lines()
+        .rev()
+        .find(|l| !l.trim().is_empty())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if !out.status.success() {
+        return Err(anyhow!("{}", if report.is_empty() { "git checkout failed" } else { &report }));
+    }
+    Ok(if report.is_empty() { format!("checked out {target}") } else { report })
+}
+
 /// `git fetch --all --prune` without any prompting. Returns a one-line summary.
 pub fn fetch() -> Result<String> {
     let out = Command::new("git")

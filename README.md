@@ -58,10 +58,16 @@ Run `gg` inside a repository. It shows every branch, like Git Graph;
 | `g` / `Home`          | first commit                         |
 | `G` / `End`           | last commit                          |
 | `Space` / `Enter`     | show the diff (`git show` via pager) |
+| `C`                   | check out the branch here, or commit |
 | `T`                   | toggle relative date / timestamp     |
 | `H`                   | copy the full hash to the clipboard  |
 | `F`                   | `git fetch --all --prune`, reload    |
 | `q` / `Esc`           | quit                                 |
+
+`C` checks out the local branch on the selected commit; with only a remote
+branch there it creates the tracking branch the way `git checkout name`
+does; with no branch at all it checks out the commit detached. The graph
+reloads so HEAD moves. git's own message, or error, shows in the status line.
 
 `H` uses wl-copy, xclip, xsel or pbcopy when one is installed, and otherwise
 the OSC 52 escape, which most terminals and tmux pass on to the clipboard.

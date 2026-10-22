@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use unicode_width::UnicodeWidthStr;
 
-use crate::git::Commit;
+use crate::git::{Commit, RefKind};
 use crate::graph::{Graph, Row};
 
 pub enum Action {
@@ -15,6 +15,8 @@ pub enum Action {
     ShowDiff { hash: String, stat: bool },
     /// Put this hash on the clipboard.
     CopyHash(String),
+    /// `git checkout` this branch or commit, then reload.
+    Checkout(String),
 }
 
 pub struct App {
@@ -143,6 +145,11 @@ impl App {
             (KeyCode::Char('G'), _) | (KeyCode::End, _) => self.move_to(usize::MAX),
             (KeyCode::Char('F'), _) => return Action::Fetch,
             (KeyCode::Char('T'), _) => self.show_timestamp = !self.show_timestamp,
+            (KeyCode::Char('C'), _) => {
+                if let Some(c) = self.selected() {
+                    return Action::Checkout(checkout_target(c));
+                }
+            }
             (KeyCode::Char('H'), _) => {
                 if let Some(c) = self.selected() {
                     return Action::CopyHash(c.hash.clone());
@@ -210,4 +217,22 @@ impl App {
             self.offset = self.cursor + 1 - h;
         }
     }
+}
+
+/// What `C` checks out on a commit: a local branch there, else a remote
+/// branch by its short name (git creates the tracking branch), else the
+/// commit itself, detached.
+fn checkout_target(c: &Commit) -> String {
+    let refs = c.parsed_refs();
+    if let Some(local) = refs.iter().find(|r| r.kind == RefKind::Branch) {
+        return local.name.clone();
+    }
+    if let Some(remote) = refs.iter().find(|r| r.kind == RefKind::Remote) {
+        if let Some((_, branch)) = remote.name.split_once('/')
+            && branch != "HEAD"
+        {
+            return branch.to_string();
+        }
+    }
+    c.hash.clone()
 }

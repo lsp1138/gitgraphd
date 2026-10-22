@@ -157,9 +157,8 @@ This is exactly how tig runs external commands, so behaviour will feel familiar.
 
 M1 is a few hundred lines; M2 is the only genuinely tricky part (~300 lines).
 
-## Decisions for you
+## Decisions taken
 
-- Default to `--all` (every branch, as Git Graph does) or HEAD-only (as `tig` does)?
-  Plan assumes HEAD-only with `--all` as a flag.
-- `D` only, or also `Enter`, for the diff? Plan maps both.
-- Relative dates (`2 hours ago`) or ISO (`2026-10-22 10:46`)? Plan assumes relative.
+- HEAD-only by default, `--all` for every branch.
+- Both `D` and `Enter` open the diff.
+- Relative dates by default, `--date=<format>` passes any git date format through.

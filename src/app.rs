@@ -1,4 +1,5 @@
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use unicode_width::UnicodeWidthStr;
 
 use crate::git::Commit;
 use crate::graph::{Graph, Row};
@@ -21,6 +22,10 @@ pub struct App {
     /// Rows available for the list; updated by the UI on every draw.
     pub height: usize,
     pub status: String,
+    /// Widest date string loaded so far; the date column is this wide.
+    pub date_width: usize,
+    /// Terminal background is dark; picks the selection colour.
+    pub dark: bool,
     /// Sticky error from the git log stream, shown until quit.
     pub error: Option<String>,
     /// True while git log is still producing commits.
@@ -39,6 +44,8 @@ impl App {
             offset: 0,
             height: 1,
             status: String::new(),
+            date_width: 0,
+            dark: true,
             error: None,
             loading: false,
             ascii: false,
@@ -51,6 +58,7 @@ impl App {
 
     /// Append one commit (they must arrive in topological order).
     pub fn push(&mut self, commit: Commit) {
+        self.date_width = self.date_width.max(UnicodeWidthStr::width(commit.date.as_str()));
         self.rows.push(self.graph.push(&commit));
         self.commits.push(commit);
     }
@@ -108,6 +116,8 @@ impl App {
     /// Keep the cursor inside the visible window.
     pub fn scroll_to_cursor(&mut self) {
         let h = self.height.max(1);
+        // Fill the screen after the terminal grew.
+        self.offset = self.offset.min(self.commits.len().saturating_sub(h));
         if self.cursor < self.offset {
             self.offset = self.cursor;
         } else if self.cursor >= self.offset + h {

@@ -79,9 +79,10 @@ const FORMAT: &str = "--format=%H%x00%P%x00%an%x00%ad%x00%D%x00%s";
 /// Start `git log` and stream its commits, in topological order, through a
 /// channel. If git fails, the last message is the error; the channel closes
 /// once git is done. Dropping the receiver kills git.
-pub fn stream(all: bool, max_count: Option<usize>) -> Result<Receiver<Result<Commit>>> {
+pub fn stream(all: bool, max_count: Option<usize>, date: &str) -> Result<Receiver<Result<Commit>>> {
     let mut cmd = Command::new("git");
-    cmd.args(["log", "--topo-order", "--date=relative", "--decorate=full", FORMAT]);
+    cmd.args(["log", "--topo-order", "--decorate=full", FORMAT]);
+    cmd.arg(format!("--date={date}"));
     if all {
         cmd.arg("--all");
     }

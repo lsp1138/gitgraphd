@@ -9,7 +9,6 @@ use crate::git::{Commit, RefKind};
 use crate::graph::Row;
 
 const AUTHOR_WIDTH: usize = 12;
-const DATE_WIDTH: usize = 14;
 /// Widest the graph column may get before rows are cut off on the right.
 const MAX_GRAPH_WIDTH: usize = 48;
 
@@ -82,9 +81,8 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         let area = Rect::new(list_area.x, row, list_area.width, 1);
         let selected = index == app.cursor;
         if selected {
-            frame
-                .buffer_mut()
-                .set_style(area, Style::new().bg(Color::Indexed(237)));
+            let bg = if app.dark { Color::Indexed(237) } else { Color::Indexed(254) };
+            frame.buffer_mut().set_style(area, Style::new().bg(bg));
         }
 
         let mut spans = graph_spans(&app.rows[index], graph_width, app.ascii);
@@ -92,7 +90,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         spans.extend([
             Span::styled(commit.short_hash().to_string(), Style::new().fg(Color::Yellow)),
             Span::raw("  "),
-            Span::styled(pad_left(&commit.date, DATE_WIDTH), Style::new().fg(Color::DarkGray)),
+            Span::styled(pad_left(&commit.date, app.date_width), Style::new().fg(Color::DarkGray)),
             Span::raw("  "),
             Span::styled(pad_right(&commit.author, AUTHOR_WIDTH), Style::new().fg(Color::Cyan)),
             Span::raw("  "),
@@ -112,7 +110,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     let (status, style) = if let Some(e) = &app.error {
         (format!("git: {e}"), Style::new().fg(Color::White).bg(Color::Red))
     } else if !app.status.is_empty() {
-        (app.status.clone(), Style::new().fg(Color::Black).bg(Color::Indexed(250)))
+        (app.status.clone(), Style::new().add_modifier(Modifier::REVERSED))
     } else {
         (
             format!(
@@ -121,7 +119,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
                 app.commits.len(),
                 if app.loading { "+" } else { "" },
             ),
-            Style::new().fg(Color::Black).bg(Color::Indexed(250)),
+            Style::new().add_modifier(Modifier::REVERSED),
         )
     };
     frame.render_widget(Line::styled(status, style), status_area);

@@ -4,6 +4,7 @@ mod graph;
 mod pager;
 mod ui;
 
+use std::process::Command;
 use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::Duration;
 
@@ -27,19 +28,31 @@ struct Args {
     #[arg(short = 'n', long = "max-count", value_name = "N")]
     max_count: Option<usize>,
 
+    /// Date format for git log: relative, short, iso, human, ...
+    #[arg(long, default_value = "relative", value_name = "FORMAT")]
+    date: String,
+
     /// Repository to open (default: current directory)
     path: Option<std::path::PathBuf>,
 }
 
-fn main() -> Result<()> {
+fn main() {
+    if let Err(e) = gg() {
+        eprintln!("gg: {e:#}");
+        std::process::exit(1);
+    }
+}
+
+fn gg() -> Result<()> {
     let args = Args::parse();
     if let Some(p) = &args.path {
         std::env::set_current_dir(p)?;
     }
 
-    let rx = git::stream(args.all, args.max_count)?;
+    let rx = git::stream(args.all, args.max_count, &args.date)?;
     let mut app = app::App::new(Vec::new());
     app.ascii = args.ascii;
+    app.dark = prefers_dark();
 
     // Wait for the first commit before taking over the screen, so a bad
     // repository fails on stderr like any other git command would.
@@ -56,6 +69,16 @@ fn main() -> Result<()> {
     let result = run(&mut terminal, &mut app, &rx);
     ratatui::restore();
     result
+}
+
+/// Same check delta-auto makes: follow GNOME's colour scheme, since the
+/// terminal background cannot be read from inside tmux. Dark if unknown.
+fn prefers_dark() -> bool {
+    Command::new("gsettings")
+        .args(["get", "org.gnome.desktop.interface", "color-scheme"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).contains("dark"))
+        .unwrap_or(true)
 }
 
 /// Pull whatever git has produced so far into the app, without blocking.

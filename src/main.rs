@@ -125,10 +125,10 @@ fn run(
         match app.handle_key(key) {
             app::Action::None => {}
             app::Action::Quit => return Ok(()),
-            app::Action::ShowDiff(hash) => {
+            app::Action::ShowDiff { hash, stat } => {
                 // Hand the real terminal to git/delta/less, then take it back.
                 ratatui::restore();
-                let outcome = pager::show(&hash);
+                let outcome = pager::show(&hash, stat);
                 *terminal = ratatui::init();
                 terminal.clear()?;
                 if let Err(e) = outcome {

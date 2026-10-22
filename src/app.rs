@@ -7,7 +7,8 @@ use crate::graph::{Graph, Row};
 pub enum Action {
     None,
     Quit,
-    ShowDiff(String),
+    /// Show the diff of this hash; `stat` asks for the file summary only.
+    ShowDiff { hash: String, stat: bool },
 }
 
 pub struct App {
@@ -82,13 +83,9 @@ impl App {
             (KeyCode::Char('G'), _) | (KeyCode::End, _) => self.move_to(usize::MAX),
             (KeyCode::Char(' '), _) | (KeyCode::Enter, _) => {
                 if let Some(c) = self.selected() {
-                    if c.parents.is_empty() {
-                        // The root commit's diff is the whole initial import;
-                        // delta rendering all of it is slow and not useful.
-                        self.status = "initial commit: no diff to show".into();
-                        return Action::None;
-                    }
-                    return Action::ShowDiff(c.hash.clone());
+                    // The root commit's diff is the whole initial import, so
+                    // show what it contains rather than every file as added.
+                    return Action::ShowDiff { hash: c.hash.clone(), stat: c.parents.is_empty() };
                 }
             }
             _ => {}

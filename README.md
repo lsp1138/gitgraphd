@@ -40,8 +40,8 @@ Inside the diff you are in git's pager, so `q` returns to the list.
 
 The line above the key hints shows the position and the selected commit's
 full subject, in case the row cut it off. The full message is part of what
-`Space` shows. The root commit has no diff view, since its diff would be the
-entire initial import.
+`Space` shows. On the root commit, `Space` shows the message and the list of
+files it added instead of the full diff, which would be the entire import.
 
 Flags: `--all`, `-n N`, `--order=date|author-date|topo` (date is the default,
 as in Git Graph; topo keeps merged branches' commits together but opens far

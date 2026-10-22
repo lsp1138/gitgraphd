@@ -11,6 +11,8 @@ pub enum Action {
     Fetch,
     /// Show the diff of this hash; `stat` asks for the file summary only.
     ShowDiff { hash: String, stat: bool },
+    /// Put this hash on the clipboard.
+    CopyHash(String),
 }
 
 pub struct App {
@@ -25,8 +27,11 @@ pub struct App {
     /// Rows available for the list; updated by the UI on every draw.
     pub height: usize,
     pub status: String,
-    /// Widest date string loaded so far; the date column is this wide.
+    /// Widest relative date and widest timestamp loaded so far.
     pub date_width: usize,
+    pub timestamp_width: usize,
+    /// Show the absolute timestamp instead of git's relative date.
+    pub show_timestamp: bool,
     /// Terminal background is dark; picks the selection colour.
     pub dark: bool,
     /// Sticky error from the git log stream, shown until quit.
@@ -62,6 +67,8 @@ impl App {
             height: 1,
             status: String::new(),
             date_width: 0,
+            timestamp_width: 0,
+            show_timestamp: false,
             dark: true,
             error: None,
             loading: false,
@@ -83,6 +90,8 @@ impl App {
             self.scroll_to_cursor();
         }
         self.date_width = self.date_width.max(UnicodeWidthStr::width(commit.date.as_str()));
+        self.timestamp_width =
+            self.timestamp_width.max(UnicodeWidthStr::width(commit.timestamp.as_str()));
         self.rows.push(self.graph.push(&commit));
         self.commits.push(commit);
     }
@@ -96,12 +105,22 @@ impl App {
         self.cursor = 0;
         self.offset = 0;
         self.date_width = 0;
+        self.timestamp_width = 0;
         self.error = None;
         self.loading = true;
     }
 
     pub fn selected(&self) -> Option<&Commit> {
         self.commits.get(self.cursor)
+    }
+
+    /// The date column's text for a commit, and the column's width.
+    pub fn date_column<'a>(&'a self, c: &'a Commit) -> (&'a str, usize) {
+        if self.show_timestamp {
+            (&c.timestamp, self.timestamp_width)
+        } else {
+            (&c.date, self.date_width)
+        }
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> Action {
@@ -118,6 +137,12 @@ impl App {
             (KeyCode::Char('g'), false) | (KeyCode::Home, _) => self.move_to(0),
             (KeyCode::Char('G'), _) | (KeyCode::End, _) => self.move_to(usize::MAX),
             (KeyCode::Char('F'), _) => return Action::Fetch,
+            (KeyCode::Char('T'), _) => self.show_timestamp = !self.show_timestamp,
+            (KeyCode::Char('H'), _) => {
+                if let Some(c) = self.selected() {
+                    return Action::CopyHash(c.hash.clone());
+                }
+            }
             (KeyCode::Char(' '), _) | (KeyCode::Enter, _) => {
                 if let Some(c) = self.selected() {
                     // The root commit's diff is the whole initial import, so

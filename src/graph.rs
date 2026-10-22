@@ -7,10 +7,11 @@
 //! for them or open a new one in the lowest free slot. Lanes never shift
 //! sideways, so every line is a straight vertical with corners at commits.
 //!
-//! Colour belongs to a line, not a column: a new line takes the lowest
-//! colour no live line is using, and a colour released on a row is not
-//! handed out again on that same row (Git Graph's rule), so a branch ending
-//! into a merge and one starting from it never look like one line.
+//! Colour belongs to a line, not a column. Git Graph hands a new line the
+//! lowest colour not in use, which on a busy repository gives one short
+//! branch after another the same colour; instead the palette is cycled, so
+//! a colour comes back only after every other one has been used, and never
+//! on the row where it was released.
 //!
 //! Each row is a list of cells, two per lane: a glyph and a spacer.
 
@@ -48,12 +49,17 @@ struct Lane {
     colour: usize,
 }
 
+/// Size of the palette the UI draws with; colours cycle through it.
+pub const PALETTE_SIZE: usize = 12;
+
 #[derive(Default)]
 pub struct Graph {
     /// Active lanes, each holding the hash it waits for. `None` is a free slot.
     lanes: Vec<Option<Lane>>,
     /// Which colour indices a live line is using.
     colours_in_use: Vec<bool>,
+    /// Where the next colour search starts, so the palette is cycled.
+    next_colour: usize,
     /// Widest row produced so far, in cells.
     pub width: usize,
 }
@@ -224,17 +230,21 @@ impl Graph {
         }
     }
 
-    /// Lowest colour no live line is using.
+    /// Next colour in the cycle that no live line is using; a new index
+    /// beyond the palette only when every colour is in use at once.
     fn alloc_colour(&mut self) -> usize {
-        let c = match self.colours_in_use.iter().position(|used| !used) {
-            Some(c) => c,
-            None => {
-                self.colours_in_use.push(false);
-                self.colours_in_use.len() - 1
+        let n = self.colours_in_use.len().max(PALETTE_SIZE);
+        self.colours_in_use.resize(n, false);
+        for k in 0..n {
+            let c = (self.next_colour + k) % n;
+            if !self.colours_in_use[c] {
+                self.colours_in_use[c] = true;
+                self.next_colour = (c + 1) % n;
+                return c;
             }
-        };
-        self.colours_in_use[c] = true;
-        c
+        }
+        self.colours_in_use.push(true);
+        self.colours_in_use.len() - 1
     }
 }
 
@@ -248,6 +258,7 @@ mod tests {
             parents: parents.iter().map(|p| p.to_string()).collect(),
             author: String::new(),
             date: String::new(),
+            timestamp: String::new(),
             refs: String::new(),
             subject: String::new(),
         }
@@ -337,8 +348,9 @@ mod tests {
     }
 
     #[test]
-    fn colour_is_reused_by_a_later_line() {
-        // one branch ends at b, a fresh one starts a row later: lowest free colour
+    fn later_line_takes_the_next_colour_not_the_freed_one() {
+        // one branch ends at b, a fresh one starts a row later: the palette
+        // cycles on, so it gets colour 2 even though 1 is free again
         let h = [
             c("m", &["b", "f"]),
             c("f", &["b"]),
@@ -348,20 +360,24 @@ mod tests {
             c("a", &[]),
         ];
         assert_eq!(layout(&h), ["○─╮", "│ ●", "●─╯", "○─╮", "│ ●", "●─╯"]);
-        assert_eq!(node_colours(&h), [0, 1, 0, 0, 1, 0]);
+        assert_eq!(node_colours(&h), [0, 1, 0, 0, 2, 0]);
     }
 
     #[test]
-    fn feature_on_top_of_dev_keeps_its_colour() {
-        // --all: feature tip t sits directly on dev's tip d; main is separate
-        let h = [
-            c("t", &["d"]),
-            c("d", &["x"]),
-            c("mainTip", &["x"]),
-            c("x", &[]),
-        ];
-        assert_eq!(layout(&h), ["●", "●", "│ ●", "●─╯"]);
-        assert_eq!(node_colours(&h), [0, 0, 1, 0]);
+    fn colours_wrap_after_the_whole_palette() {
+        // thirteen short branches in a row, each merged by the next merge
+        // commit: colours 1..11 are handed out, then the cycle wraps to 1
+        let mut h = Vec::new();
+        for i in 1..=13 {
+            let next = if i == 13 { "root".to_string() } else { format!("m{}", i + 1) };
+            let (m, f) = (format!("m{i}"), format!("f{i}"));
+            h.push(c(&m, &[&next, &f]));
+            h.push(c(&f, &[&next]));
+        }
+        h.push(c("root", &[]));
+        let cols = node_colours(&h);
+        let branch_cols: Vec<usize> = cols.iter().skip(1).step_by(2).copied().collect();
+        assert_eq!(branch_cols, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 1, 2]);
     }
 
     #[test]

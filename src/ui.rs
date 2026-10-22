@@ -125,7 +125,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         spans.extend([
             Span::styled(commit.short_hash().to_string(), Style::new().fg(Color::Yellow)),
             Span::raw("  "),
-            Span::styled(pad_left(&commit.date, app.date_width), Style::new().fg(dim)),
+            {
+                let (text, width) = app.date_column(commit);
+                Span::styled(pad_right(text, width), Style::new().fg(dim))
+            },
             Span::raw("  "),
             Span::styled(pad_right(&commit.author, AUTHOR_WIDTH), Style::new().fg(Color::Cyan)),
             Span::raw("  "),
@@ -164,7 +167,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     frame.render_widget(Line::styled(status, style), status_area);
     frame.render_widget(
         Line::styled(
-            " j/k move  d/u page  g/G ends  Space diff  F fetch  q quit",
+            " j/k move  d/u page  g/G ends  Space diff  T time  H hash  F fetch  q quit",
             Style::new().fg(dim),
         ),
         hints_area,
@@ -208,13 +211,3 @@ fn pad_right(s: &str, width: usize) -> String {
     out
 }
 
-/// Pad on the left; truncating from the left if too long.
-fn pad_left(s: &str, width: usize) -> String {
-    let w = UnicodeWidthStr::width(s);
-    if w >= width {
-        return s.to_string();
-    }
-    let mut out: String = std::iter::repeat_n(' ', width - w).collect();
-    out.push_str(s);
-    out
-}

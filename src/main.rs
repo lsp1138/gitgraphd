@@ -1,4 +1,5 @@
 mod app;
+mod clipboard;
 mod git;
 mod graph;
 mod pager;
@@ -220,6 +221,12 @@ fn run(
         match action {
             app::Action::None => {}
             app::Action::Quit => return Ok(()),
+            app::Action::CopyHash(hash) => {
+                app.status = match clipboard::copy(&hash) {
+                    Ok(()) => format!("copied {hash}"),
+                    Err(e) => format!("copy failed: {e:#}"),
+                };
+            }
             app::Action::Fetch => {
                 if !app.fetching {
                     app.fetching = true;

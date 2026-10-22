@@ -29,7 +29,10 @@ pub struct Commit {
     pub hash: String,
     pub parents: Vec<String>,
     pub author: String,
+    /// Date as git formatted it (`--date=...`, relative by default).
     pub date: String,
+    /// Author time as `YYYY-MM-DD HH:MM` in the author's own timezone.
+    pub timestamp: String,
     /// Raw `%D` decoration string, e.g. `HEAD -> main, origin/main, tag: v1`.
     pub refs: String,
     pub subject: String,
@@ -74,7 +77,7 @@ impl Commit {
     }
 }
 
-const FORMAT: &str = "--format=%H%x00%P%x00%an%x00%ad%x00%D%x00%s";
+const FORMAT: &str = "--format=%H%x00%P%x00%an%x00%ad%x00%aI%x00%D%x00%s";
 
 #[derive(Debug, Clone)]
 pub struct LogOpts {
@@ -161,7 +164,7 @@ pub fn fetch() -> Result<String> {
 }
 
 fn parse_line(line: &str) -> Option<Commit> {
-    let mut f = line.splitn(6, '\0');
+    let mut f = line.splitn(7, '\0');
     let hash = f.next()?.to_string();
     let parents = f
         .next()?
@@ -170,6 +173,12 @@ fn parse_line(line: &str) -> Option<Commit> {
         .collect();
     let author = f.next()?.to_string();
     let date = f.next()?.to_string();
+    // 2026-10-22T15:14:03+01:00 -> 2026-10-22 15:14
+    let iso = f.next()?;
+    let timestamp = match iso.get(..16) {
+        Some(t) => t.replacen('T', " ", 1),
+        None => iso.to_string(),
+    };
     let refs = f.next()?.to_string();
     let subject = f.next().unwrap_or("").to_string();
     Some(Commit {
@@ -177,6 +186,7 @@ fn parse_line(line: &str) -> Option<Commit> {
         parents,
         author,
         date,
+        timestamp,
         refs,
         subject,
     })
@@ -188,12 +198,14 @@ mod tests {
 
     #[test]
     fn parses_merge_with_refs() {
-        let line = "abc\0p1 p2\0Lars\02 hours ago\0HEAD -> main, tag: v1\0Merge: a\0b";
+        let line =
+            "abc\0p1 p2\0Lars\02 hours ago\02026-10-22T15:14:03+01:00\0HEAD -> main, tag: v1\0Merge: a\0b";
         let c = parse_line(line).unwrap();
         assert_eq!(c.hash, "abc");
         assert_eq!(c.parents, vec!["p1", "p2"]);
         assert_eq!(c.author, "Lars");
         assert_eq!(c.date, "2 hours ago");
+        assert_eq!(c.timestamp, "2026-10-22 15:14");
         assert_eq!(c.refs, "HEAD -> main, tag: v1");
         // the subject keeps any stray NULs; splitn(6) guarantees that
         assert_eq!(c.subject, "Merge: a\0b");
@@ -202,7 +214,7 @@ mod tests {
     #[test]
     fn classifies_full_refs() {
         let c = parse_line(
-            "h\0\0a\0d\0HEAD -> refs/heads/main, refs/remotes/origin/main, tag: refs/tags/v1, refs/stash\0s",
+            "h\0\0a\0d\0t\0HEAD -> refs/heads/main, refs/remotes/origin/main, tag: refs/tags/v1, refs/stash\0s",
         )
         .unwrap();
         let refs = c.parsed_refs();
@@ -222,7 +234,7 @@ mod tests {
 
     #[test]
     fn detached_head() {
-        let c = parse_line("h\0\0a\0d\0HEAD, tag: refs/tags/v2\0s").unwrap();
+        let c = parse_line("h\0\0a\0d\0t\0HEAD, tag: refs/tags/v2\0s").unwrap();
         let refs = c.parsed_refs();
         assert_eq!(refs[0], Ref { name: "HEAD".into(), kind: RefKind::Head, is_head: true });
         assert_eq!(refs[1].kind, RefKind::Tag);
@@ -231,7 +243,7 @@ mod tests {
 
     #[test]
     fn parses_root_commit_without_parents_or_refs() {
-        let c = parse_line("abc\0\0Lars\0now\0\0init").unwrap();
+        let c = parse_line("abc\0\0Lars\0now\0t\0\0init").unwrap();
         assert!(c.parents.is_empty());
         assert_eq!(c.refs, "");
         assert_eq!(c.subject, "init");

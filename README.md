@@ -43,8 +43,13 @@ Run `gg` inside a repository. It shows every branch, like Git Graph;
 | `g` / `Home`          | first commit                         |
 | `G` / `End`           | last commit                          |
 | `Space` / `Enter`     | show the diff (`git show` via pager) |
+| `T`                   | toggle relative date / timestamp     |
+| `H`                   | copy the full hash to the clipboard  |
 | `F`                   | `git fetch --all --prune`, reload    |
 | `q` / `Esc`           | quit                                 |
+
+`H` uses wl-copy, xclip, xsel or pbcopy when one is installed, and otherwise
+the OSC 52 escape, which most terminals and tmux pass on to the clipboard.
 
 The mouse wheel or trackpad scrolls the list, and a click selects a row. In
 the diff, less gets `--mouse` so it scrolls there too. Because the terminal
@@ -72,10 +77,13 @@ still waits for `q` instead of flashing past.
 ## Colours
 
 Graph colours follow lines, as in Git Graph: a line is a commit and its
-first-parent chain until it ends by merging into another line. A new line
-takes the lowest colour no live line is using, from Git Graph's default
-twelve-colour palette. A feature branch sitting directly on top of dev is the
-same line as dev and shares its colour; one that diverged gets its own.
+first-parent chain until it ends by merging into another line. A feature
+branch sitting directly on top of dev is the same line as dev and shares its
+colour; one that diverged gets its own. The palette is Git Graph's default
+twelve colours. One deliberate difference: Git Graph gives a new line the
+lowest colour that is free, which on a busy repository paints one short
+branch after another the same; `gg` cycles through the palette instead, so a
+colour only comes back once all the others have been used.
 
 Ref pills take the colour of the line their commit is on, as in Git Graph.
 Tags are prefixed with `tag:`, and the checked-out branch is bold and

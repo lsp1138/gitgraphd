@@ -86,9 +86,11 @@ after `F` keeps the colours lines had before, so main and dev do not swap.
 
 Ref pills take the colour of the line their commit is on, as in Git Graph,
 and follow its label rules: a local branch and its remote on the same commit
-are one pill (`dev │ origin`); a remote with no local counterpart is a filled
-`origin/feature` pill; a local branch that is not on any remote here is drawn
-as a frame, `[ dev ]`, so unpushed work stands out. The checked-out branch
-comes first, bold and underlined. Tags are prefixed with `tag:`. The selection
+are one pill (`dev │ origin`); a local branch whose remote is on another
+commit is a plain filled pill; a remote with no local counterpart is a filled
+`origin/feature` pill; a branch that exists on no remote at all, and the
+stash, are drawn as a frame, `[ wip ]`, so purely local things stand out.
+The checked-out branch comes first, bold and underlined. Tags are prefixed
+with `tag:`. The selection
 colour follows the desktop light/dark setting on GNOME and macOS; set
 `GG_THEME=light` or `GG_THEME=dark` to override, or anywhere else.

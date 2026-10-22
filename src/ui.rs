@@ -139,7 +139,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             Span::styled(pad_right(&commit.author, AUTHOR_WIDTH), Style::new().fg(Color::Cyan)),
             Span::raw("  "),
         ]);
-        spans.extend(ref_pills(commit, app.rows[index].node_colour()));
+        spans.extend(ref_pills(commit, app.rows[index].node_colour(), &app.remote_branches));
         spans.push(Span::styled(
                 commit.subject.clone(),
                 if selected {
@@ -182,12 +182,17 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
 
 /// Pills for the refs on a commit, following Git Graph's label rules: a
 /// local branch and its remote on the same commit become one filled pill
-/// (`dev │ origin`); a remote with no local counterpart is a filled pill;
-/// a local branch not on any remote here is drawn as a frame in the line
-/// colour, so unpushed work stands out. The checked-out branch comes first,
-/// bold and underlined. Tags carry a `tag:` prefix. Each pill is followed
-/// by a space.
-fn ref_pills(commit: &Commit, colour: usize) -> Vec<Span<'static>> {
+/// (`dev │ origin`); a local branch whose remote is elsewhere is a plain
+/// filled pill; a remote with no local counterpart is a filled pill; a
+/// branch that exists on no remote at all, and the stash, are drawn as a
+/// frame in the line colour, so purely local things stand out. The
+/// checked-out branch comes first, bold and underlined. Tags carry a `tag:`
+/// prefix. Each pill is followed by a space.
+fn ref_pills(
+    commit: &Commit,
+    colour: usize,
+    remote_branches: &std::collections::HashSet<String>,
+) -> Vec<Span<'static>> {
     let bg = line_color(colour);
     let filled = Style::new().fg(text_on(bg)).bg(bg);
     let framed = Style::new().fg(bg);
@@ -214,14 +219,17 @@ fn ref_pills(commit: &Commit, colour: usize) -> Vec<Span<'static>> {
                 true
             }
         });
-        let mut style = if on.is_empty() { framed } else { filled };
+        let pushed = !on.is_empty() || remote_branches.contains(&local.name);
+        let mut style = if pushed { filled } else { framed };
         if local.is_head {
             style = style.add_modifier(head_mark);
         }
-        let label = if on.is_empty() {
-            format!("[ {} ]", local.name)
-        } else {
+        let label = if !on.is_empty() {
             format!(" {} │ {} ", local.name, on.join(" "))
+        } else if pushed {
+            format!(" {} ", local.name)
+        } else {
+            format!("[ {} ]", local.name)
         };
         pills.push(Span::styled(label, style));
     }
@@ -229,12 +237,13 @@ fn ref_pills(commit: &Commit, colour: usize) -> Vec<Span<'static>> {
         pills.push(Span::styled(format!(" {remote}/{branch} "), filled));
     }
     for r in refs.iter().filter(|r| matches!(r.kind, RefKind::Head | RefKind::Tag | RefKind::Other)) {
-        let mut style = filled;
+        let mut style = if r.kind == RefKind::Other { framed } else { filled };
         if r.is_head {
             style = style.add_modifier(head_mark);
         }
         let label = match r.kind {
             RefKind::Tag => format!(" tag: {} ", r.name),
+            RefKind::Other => format!("[ {} ]", r.name),
             _ => format!(" {} ", r.name),
         };
         pills.push(Span::styled(label, style));

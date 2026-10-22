@@ -139,6 +139,22 @@ pub fn stream(opts: &LogOpts) -> Result<Receiver<Result<Commit>>> {
     Ok(rx)
 }
 
+/// Names of branches that exist on any remote (`origin/dev` -> `dev`),
+/// so a local branch can be told apart from one that was never pushed.
+pub fn remote_branches() -> std::collections::HashSet<String> {
+    let Ok(out) = Command::new("git")
+        .args(["for-each-ref", "--format=%(refname:short)", "refs/remotes/"])
+        .output()
+    else {
+        return Default::default();
+    };
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|l| l.split_once('/').map(|(_, branch)| branch.to_string()))
+        .filter(|b| b != "HEAD")
+        .collect()
+}
+
 /// `git fetch --all --prune` without any prompting. Returns a one-line summary.
 pub fn fetch() -> Result<String> {
     let out = Command::new("git")

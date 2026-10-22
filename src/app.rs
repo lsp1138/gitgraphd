@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use unicode_width::UnicodeWidthStr;
 
@@ -42,6 +44,8 @@ pub struct App {
     pub fetching: bool,
     /// After a reload, put the cursor back on this commit when it arrives.
     pending_cursor: Option<String>,
+    /// Branch names that exist on some remote; others are drawn framed.
+    pub remote_branches: HashSet<String>,
     /// How graph lines are drawn.
     pub style: LineStyle,
 }
@@ -74,6 +78,7 @@ impl App {
             loading: false,
             fetching: false,
             pending_cursor: None,
+            remote_branches: HashSet::new(),
             style: LineStyle::Heavy,
         };
         for c in commits {

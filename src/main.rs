@@ -87,6 +87,7 @@ fn gg() -> Result<()> {
 
     let rx = git::stream(&opts)?;
     let mut app = app::App::new(Vec::new());
+    app.remote_branches = git::remote_branches();
     app.style = if args.ascii {
         app::LineStyle::Ascii
     } else if args.thin {
@@ -191,6 +192,7 @@ fn run(
             match outcome {
                 Ok(summary) => {
                     app.status = summary;
+                    app.remote_branches = git::remote_branches();
                     rx = git::stream(opts)?;
                     app.reset();
                 }

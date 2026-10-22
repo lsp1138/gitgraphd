@@ -34,7 +34,7 @@ Run `gg` inside a repository. `gg --all` shows every branch, like Git Graph.
 | `g` / `Home`          | first commit                         |
 | `G` / `End`           | last commit                          |
 | `Space` / `Enter`     | show the diff (`git show` via pager) |
-| `F`                   | `git fetch --all`, then reload       |
+| `F`                   | `git fetch --all --prune`, reload    |
 | `q` / `Esc`           | quit                                 |
 
 The mouse wheel or trackpad scrolls the list, and a click selects a row. In

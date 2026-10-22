@@ -134,10 +134,10 @@ pub fn stream(opts: &LogOpts) -> Result<Receiver<Result<Commit>>> {
     Ok(rx)
 }
 
-/// `git fetch --all` without any prompting. Returns a one-line summary.
+/// `git fetch --all --prune` without any prompting. Returns a one-line summary.
 pub fn fetch() -> Result<String> {
     let out = Command::new("git")
-        .args(["fetch", "--all"])
+        .args(["fetch", "--all", "--prune"])
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdin(Stdio::null())
         .output()

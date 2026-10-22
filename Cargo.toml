@@ -1,0 +1,21 @@
+[package]
+name = "gitgraphd"
+version = "0.1.0"
+edition = "2024"
+description = "Minimal tig: a Git Graph style commit tree, and D opens the diff in delta"
+license = "MIT"
+
+[[bin]]
+name = "gg"
+path = "src/main.rs"
+
+[dependencies]
+ratatui = "0.30"
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+unicode-width = "0.2"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

@@ -4,6 +4,11 @@
 Git Graph extension, tig-style navigation, and `Space` to open the selected
 commit in [delta](https://github.com/dandavison/delta). Nothing else.
 
+The diffs below are rendered by [delta](https://github.com/dandavison/delta),
+which does the hard part of making a diff readable. If you like what you
+see, give delta a star; gg just puts a tree on top of it. The screenshots
+show delta's own history.
+
 ![gg showing delta's own history](docs/graph.png)
 
 `Space` on a commit hands the terminal to git's pager, delta here:

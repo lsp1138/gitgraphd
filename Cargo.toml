@@ -4,6 +4,12 @@ version = "0.1.0"
 edition = "2024"
 description = "Minimal tig: a Git Graph style commit tree, and Space opens the diff in delta"
 license = "MIT"
+authors = ["Lars Pittman <larspittman@gmail.com>"]
+repository = "https://github.com/lsp1138/gitgraphd"
+readme = "README.md"
+keywords = ["git", "tui", "graph", "tig", "delta"]
+categories = ["command-line-utilities", "development-tools"]
+rust-version = "1.88"
 
 [[bin]]
 name = "gg"

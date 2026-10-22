@@ -14,12 +14,20 @@ commit in [delta](https://github.com/dandavison/delta). Nothing else.
 ## Install
 
 ```
-cargo install --path .
+cargo install gitgraphd
 ```
 
-That puts `gg` in `~/.cargo/bin`. It needs `git` on the PATH, and uses whatever
-`core.pager` git is configured with, so delta is picked up through your normal
-git config.
+or from a checkout, `cargo install --path .`. Either way the binary is `gg`
+in `~/.cargo/bin`. It needs `git` on the PATH and uses whatever `core.pager`
+git is configured with, so if you already use delta for `git diff`, `gg`
+uses it too. Any pager works; delta just looks best.
+
+## Why
+
+tig does a lot; Git Graph in VS Code draws the nicest commit tree; delta
+renders the best diffs. `gg` is just those two pictures glued together with
+tig's keys, in one small binary that shells out to git and never touches
+your repository.
 
 ## Use
 
@@ -70,6 +78,6 @@ twelve-colour palette. A feature branch sitting directly on top of dev is the
 same line as dev and shares its colour; one that diverged gets its own.
 
 Pills: green local branch, blue remote, yellow tag, white detached HEAD, grey
-anything else. The checked-out branch is bold and underlined. The selection
-colour follows GNOME's light/dark setting, the same way the `delta-auto`
-wrapper does.
+anything else. The checked-out branch is bold and underlined. On GNOME the
+selection colour follows the desktop light/dark setting; elsewhere it assumes
+a dark terminal.

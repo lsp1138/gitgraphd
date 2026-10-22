@@ -2,7 +2,7 @@
 name = "gitgraphd"
 version = "0.1.0"
 edition = "2024"
-description = "Minimal tig: a Git Graph style commit tree, and D opens the diff in delta"
+description = "Minimal tig: a Git Graph style commit tree, and Space opens the diff in delta"
 license = "MIT"
 
 [[bin]]

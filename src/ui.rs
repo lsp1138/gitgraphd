@@ -114,7 +114,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
     } else {
         (
             format!(
-                "[{}/{}{}]  j/k move  ^d/^u page  g/G ends  D/Enter diff  q quit",
+                "[{}/{}{}]  j/k move  D/U page  g/G ends  Space diff  q quit",
                 (app.cursor + 1).min(app.commits.len()),
                 app.commits.len(),
                 if app.loading { "+" } else { "" },

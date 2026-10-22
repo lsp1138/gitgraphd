@@ -28,6 +28,10 @@ struct Args {
     #[arg(short = 'n', long = "max-count", value_name = "N")]
     max_count: Option<usize>,
 
+    /// Commit order: date (Git Graph's default), author-date, or topo
+    #[arg(long, default_value = "date", value_name = "ORDER")]
+    order: String,
+
     /// Date format for git log: relative, short, iso, human, ...
     #[arg(long, default_value = "relative", value_name = "FORMAT")]
     date: String,
@@ -49,7 +53,7 @@ fn gg() -> Result<()> {
         std::env::set_current_dir(p)?;
     }
 
-    let rx = git::stream(args.all, args.max_count, &args.date)?;
+    let rx = git::stream(args.all, args.max_count, &args.date, &args.order)?;
     let mut app = app::App::new(Vec::new());
     app.ascii = args.ascii;
     app.dark = prefers_dark();

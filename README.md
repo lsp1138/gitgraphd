@@ -1,8 +1,8 @@
 # gitgraphd
 
 `gg` is the smallest useful slice of tig: a commit graph drawn like VS Code's
-Git Graph extension, tig-style navigation, and `D` to open the selected commit
-in [delta](https://github.com/dandavison/delta). Nothing else.
+Git Graph extension, tig-style navigation, and `Space` to open the selected
+commit in [delta](https://github.com/dandavison/delta). Nothing else.
 
 ```
 ◉    58a3dcc    3 months ago  Gregory Pako   master   origin/master   made fpp robust
@@ -29,15 +29,19 @@ Run `gg` inside a repository. `gg --all` shows every branch, like Git Graph.
 |-----------------------|--------------------------------------|
 | `j` / `↓`             | next commit                          |
 | `k` / `↑`             | previous commit                      |
-| `Ctrl-d` / `PageDown` | half page down                       |
-| `Ctrl-u` / `PageUp`   | half page up                         |
+| `D` / `Ctrl-d`        | half page down                       |
+| `U` / `Ctrl-u`        | half page up                         |
 | `g` / `Home`          | first commit                         |
 | `G` / `End`           | last commit                          |
-| `D` / `Enter`         | show the diff (`git show` via pager) |
+| `Space` / `Enter`     | show the diff (`git show` via pager) |
 | `q` / `Esc`           | quit                                 |
 
-Flags: `--all`, `-n N`, `--date=<git date format>`, `--ascii` for terminals
-without box-drawing glyphs, and an optional repository path.
+Inside the diff you are in git's pager, so `q` returns to the list.
+
+Flags: `--all`, `-n N`, `--order=date|author-date|topo` (date is the default,
+as in Git Graph; topo keeps merged branches' commits together but opens far
+more lanes on busy repositories), `--date=<git date format>`, `--ascii` for
+terminals without box-drawing glyphs, and an optional repository path.
 
 `GG_PAGER` overrides the pager for gg only, for example `GG_PAGER=less`.
 

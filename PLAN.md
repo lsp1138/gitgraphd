@@ -117,11 +117,11 @@ colour across the whole line, tig-style.
 |------------------------|----------------------------------|
 | `j` / `↓`              | next commit                      |
 | `k` / `↑`              | previous commit                  |
-| `Ctrl-d` / `PageDown`  | half page down                   |
-| `Ctrl-u` / `PageUp`    | half page up                     |
+| `D` / `Ctrl-d`         | half page down                   |
+| `U` / `Ctrl-u`         | half page up                     |
 | `g` / `Home`           | first commit                     |
 | `G` / `End`            | last loaded commit               |
-| `D` / `Enter`          | show diff of selected commit in delta |
+| `Space` / `Enter`      | show diff of selected commit in delta |
 | `q` / `Esc`            | quit                             |
 
 That is the whole key map. No `:` command line, no `?` help view in v1.
@@ -162,3 +162,8 @@ M1 is a few hundred lines; M2 is the only genuinely tricky part (~300 lines).
 - HEAD-only by default, `--all` for every branch.
 - Both `D` and `Enter` open the diff.
 - Relative dates by default, `--date=<format>` passes any git date format through.
+- `--date-order` by default like Git Graph, not `--topo-order`: on a repository
+  with many merged branches topo order emits each merged branch long after its
+  merge, so lanes stay open for pages and the graph hits the width cap.
+  `--order=topo` is still available.
+- Keys revised after first use: `D`/`U` page, `Space` opens the diff.

@@ -21,6 +21,10 @@ pub struct App {
     /// Rows available for the list; updated by the UI on every draw.
     pub height: usize,
     pub status: String,
+    /// Sticky error from the git log stream, shown until quit.
+    pub error: Option<String>,
+    /// True while git log is still producing commits.
+    pub loading: bool,
     /// Draw the graph with `* | / \` instead of box-drawing glyphs.
     pub ascii: bool,
 }
@@ -35,6 +39,8 @@ impl App {
             offset: 0,
             height: 1,
             status: String::new(),
+            error: None,
+            loading: false,
             ascii: false,
         };
         for c in commits {

@@ -109,19 +109,22 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         frame.render_widget(Line::from(spans), area);
     }
 
-    let status = if app.status.is_empty() {
-        format!(
-            "[{}/{}]  j/k move  ^d/^u page  g/G ends  D/Enter diff  q quit",
-            (app.cursor + 1).min(app.commits.len()),
-            app.commits.len()
-        )
+    let (status, style) = if let Some(e) = &app.error {
+        (format!("git: {e}"), Style::new().fg(Color::White).bg(Color::Red))
+    } else if !app.status.is_empty() {
+        (app.status.clone(), Style::new().fg(Color::Black).bg(Color::Indexed(250)))
     } else {
-        app.status.clone()
+        (
+            format!(
+                "[{}/{}{}]  j/k move  ^d/^u page  g/G ends  D/Enter diff  q quit",
+                (app.cursor + 1).min(app.commits.len()),
+                app.commits.len(),
+                if app.loading { "+" } else { "" },
+            ),
+            Style::new().fg(Color::Black).bg(Color::Indexed(250)),
+        )
     };
-    frame.render_widget(
-        Line::styled(status, Style::new().fg(Color::Black).bg(Color::Indexed(250))),
-        status_area,
-    );
+    frame.render_widget(Line::styled(status, style), status_area);
 }
 
 /// Coloured pills for the refs on a commit, Git Graph style, each followed

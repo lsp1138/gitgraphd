@@ -1,6 +1,9 @@
-use std::process::Command;
+use std::io::{BufRead, BufReader, Read};
+use std::process::{Command, Stdio};
+use std::sync::mpsc::{self, Receiver};
+use std::thread;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefKind {
@@ -73,8 +76,10 @@ impl Commit {
 
 const FORMAT: &str = "--format=%H%x00%P%x00%an%x00%ad%x00%D%x00%s";
 
-/// Run `git log` and parse every commit, in topological order.
-pub fn log(all: bool, max_count: Option<usize>) -> Result<Vec<Commit>> {
+/// Start `git log` and stream its commits, in topological order, through a
+/// channel. If git fails, the last message is the error; the channel closes
+/// once git is done. Dropping the receiver kills git.
+pub fn stream(all: bool, max_count: Option<usize>) -> Result<Receiver<Result<Commit>>> {
     let mut cmd = Command::new("git");
     cmd.args(["log", "--topo-order", "--date=relative", "--decorate=full", FORMAT]);
     if all {
@@ -83,12 +88,40 @@ pub fn log(all: bool, max_count: Option<usize>) -> Result<Vec<Commit>> {
     if let Some(n) = max_count {
         cmd.arg(format!("--max-count={n}"));
     }
-    let out = cmd.output().context("could not run git")?;
-    if !out.status.success() {
-        bail!("{}", String::from_utf8_lossy(&out.stderr).trim());
-    }
-    let text = String::from_utf8_lossy(&out.stdout);
-    Ok(text.lines().filter_map(parse_line).collect())
+    let mut child = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("could not run git")?;
+    let stdout = child.stdout.take().expect("stdout is piped");
+    let mut stderr = child.stderr.take().expect("stderr is piped");
+
+    let (tx, rx) = mpsc::channel();
+    thread::spawn(move || {
+        // Drain stderr separately so a chatty git can never block on it.
+        let stderr_reader = thread::spawn(move || {
+            let mut s = String::new();
+            let _ = stderr.read_to_string(&mut s);
+            s
+        });
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            let Some(commit) = parse_line(&line) else { continue };
+            if tx.send(Ok(commit)).is_err() {
+                let _ = child.kill();
+                break;
+            }
+        }
+        let status = child.wait();
+        let errors = stderr_reader.join().unwrap_or_default();
+        let outcome = match status {
+            Ok(s) if s.success() => return,
+            Ok(_) => anyhow!("{}", errors.trim()),
+            Err(e) => anyhow!("git: {e}"),
+        };
+        let _ = tx.send(Err(outcome));
+    });
+    Ok(rx)
 }
 
 fn parse_line(line: &str) -> Option<Commit> {

@@ -4,6 +4,7 @@ mod graph;
 mod pager;
 mod ui;
 
+use std::sync::mpsc::{Receiver, TryRecvError};
 use std::time::Duration;
 
 use anyhow::Result;
@@ -36,21 +37,55 @@ fn main() -> Result<()> {
         std::env::set_current_dir(p)?;
     }
 
-    let commits = git::log(args.all, args.max_count)?;
-    let mut app = app::App::new(commits);
+    let rx = git::stream(args.all, args.max_count)?;
+    let mut app = app::App::new(Vec::new());
     app.ascii = args.ascii;
 
+    // Wait for the first commit before taking over the screen, so a bad
+    // repository fails on stderr like any other git command would.
+    match rx.recv() {
+        Ok(Ok(commit)) => {
+            app.push(commit);
+            app.loading = true;
+        }
+        Ok(Err(e)) => return Err(e),
+        Err(_) => {}
+    }
+
     let mut terminal = ratatui::init();
-    let result = run(&mut terminal, &mut app);
+    let result = run(&mut terminal, &mut app, &rx);
     ratatui::restore();
     result
 }
 
-fn run(terminal: &mut ratatui::DefaultTerminal, app: &mut app::App) -> Result<()> {
+/// Pull whatever git has produced so far into the app, without blocking.
+fn drain(app: &mut app::App, rx: &Receiver<Result<git::Commit>>) {
+    for _ in 0..10_000 {
+        match rx.try_recv() {
+            Ok(Ok(commit)) => app.push(commit),
+            Ok(Err(e)) => app.error = Some(format!("{e:#}")),
+            Err(TryRecvError::Empty) => return,
+            Err(TryRecvError::Disconnected) => {
+                app.loading = false;
+                return;
+            }
+        }
+    }
+}
+
+fn run(
+    terminal: &mut ratatui::DefaultTerminal,
+    app: &mut app::App,
+    rx: &Receiver<Result<git::Commit>>,
+) -> Result<()> {
     loop {
+        if app.loading {
+            drain(app, rx);
+        }
         terminal.draw(|frame| ui::draw(frame, app))?;
 
-        if !event::poll(Duration::from_millis(250))? {
+        let tick = Duration::from_millis(if app.loading { 30 } else { 250 });
+        if !event::poll(tick)? {
             continue;
         }
         let Event::Key(key) = event::read()? else {

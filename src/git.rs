@@ -2,6 +2,25 @@ use std::process::Command;
 
 use anyhow::{Context, Result, bail};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefKind {
+    /// Detached HEAD, shown on its own.
+    Head,
+    Branch,
+    Remote,
+    Tag,
+    /// Anything else under refs/, e.g. refs/stash.
+    Other,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ref {
+    pub name: String,
+    pub kind: RefKind,
+    /// HEAD points at this branch.
+    pub is_head: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Commit {
     pub hash: String,
@@ -22,6 +41,34 @@ impl Commit {
     pub fn is_head(&self) -> bool {
         self.refs == "HEAD" || self.refs.starts_with("HEAD -> ") || self.refs.starts_with("HEAD, ")
     }
+
+    /// Typed refs from the `--decorate=full` decoration string.
+    pub fn parsed_refs(&self) -> Vec<Ref> {
+        self.refs
+            .split(", ")
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(|part| {
+                if part == "HEAD" {
+                    return Ref { name: "HEAD".into(), kind: RefKind::Head, is_head: true };
+                }
+                let (is_head, name) = match part.strip_prefix("HEAD -> ") {
+                    Some(n) => (true, n),
+                    None => (false, part),
+                };
+                let (kind, name) = if let Some(n) = name.strip_prefix("tag: ") {
+                    (RefKind::Tag, n.strip_prefix("refs/tags/").unwrap_or(n))
+                } else if let Some(n) = name.strip_prefix("refs/heads/") {
+                    (RefKind::Branch, n)
+                } else if let Some(n) = name.strip_prefix("refs/remotes/") {
+                    (RefKind::Remote, n)
+                } else {
+                    (RefKind::Other, name.strip_prefix("refs/").unwrap_or(name))
+                };
+                Ref { name: name.into(), kind, is_head }
+            })
+            .collect()
+    }
 }
 
 const FORMAT: &str = "--format=%H%x00%P%x00%an%x00%ad%x00%D%x00%s";
@@ -29,7 +76,7 @@ const FORMAT: &str = "--format=%H%x00%P%x00%an%x00%ad%x00%D%x00%s";
 /// Run `git log` and parse every commit, in topological order.
 pub fn log(all: bool, max_count: Option<usize>) -> Result<Vec<Commit>> {
     let mut cmd = Command::new("git");
-    cmd.args(["log", "--topo-order", "--date=relative", FORMAT]);
+    cmd.args(["log", "--topo-order", "--date=relative", "--decorate=full", FORMAT]);
     if all {
         cmd.arg("--all");
     }
@@ -81,6 +128,36 @@ mod tests {
         assert_eq!(c.refs, "HEAD -> main, tag: v1");
         // the subject keeps any stray NULs; splitn(6) guarantees that
         assert_eq!(c.subject, "Merge: a\0b");
+    }
+
+    #[test]
+    fn classifies_full_refs() {
+        let c = parse_line(
+            "h\0\0a\0d\0HEAD -> refs/heads/main, refs/remotes/origin/main, tag: refs/tags/v1, refs/stash\0s",
+        )
+        .unwrap();
+        let refs = c.parsed_refs();
+        let view: Vec<(&str, RefKind, bool)> =
+            refs.iter().map(|r| (r.name.as_str(), r.kind, r.is_head)).collect();
+        assert_eq!(
+            view,
+            [
+                ("main", RefKind::Branch, true),
+                ("origin/main", RefKind::Remote, false),
+                ("v1", RefKind::Tag, false),
+                ("stash", RefKind::Other, false),
+            ]
+        );
+        assert!(c.is_head());
+    }
+
+    #[test]
+    fn detached_head() {
+        let c = parse_line("h\0\0a\0d\0HEAD, tag: refs/tags/v2\0s").unwrap();
+        let refs = c.parsed_refs();
+        assert_eq!(refs[0], Ref { name: "HEAD".into(), kind: RefKind::Head, is_head: true });
+        assert_eq!(refs[1].kind, RefKind::Tag);
+        assert!(c.is_head());
     }
 
     #[test]

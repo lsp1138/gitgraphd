@@ -21,6 +21,8 @@ pub struct App {
     /// Rows available for the list; updated by the UI on every draw.
     pub height: usize,
     pub status: String,
+    /// Draw the graph with `* | / \` instead of box-drawing glyphs.
+    pub ascii: bool,
 }
 
 impl App {
@@ -33,6 +35,7 @@ impl App {
             offset: 0,
             height: 1,
             status: String::new(),
+            ascii: false,
         };
         for c in commits {
             app.push(c);

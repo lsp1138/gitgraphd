@@ -5,6 +5,7 @@ use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
 use crate::app::App;
+use crate::git::{Commit, RefKind};
 use crate::graph::Row;
 
 const AUTHOR_WIDTH: usize = 12;
@@ -28,8 +29,23 @@ fn lane_color(lane: usize) -> Color {
     PALETTE[lane % PALETTE.len()]
 }
 
+/// Plain-ASCII stand-in for each box-drawing glyph.
+fn ascii(ch: char) -> char {
+    match ch {
+        '●' => '*',
+        '◉' => '@',
+        '○' => 'o',
+        '│' => '|',
+        '─' => '-',
+        '╮' | '╰' => '\\',
+        '╭' | '╯' => '/',
+        '┼' | '┤' | '├' | '┬' | '┴' => '+',
+        other => other,
+    }
+}
+
 /// Spans for one graph row, padded to `width` cells.
-fn graph_spans(row: &Row, width: usize) -> Vec<Span<'static>> {
+fn graph_spans(row: &Row, width: usize, plain: bool) -> Vec<Span<'static>> {
     let mut spans = Vec::with_capacity(row.cells.len() + 1);
     let mut run = String::new();
     let mut run_lane = usize::MAX;
@@ -38,7 +54,7 @@ fn graph_spans(row: &Row, width: usize) -> Vec<Span<'static>> {
             spans.push(Span::styled(std::mem::take(&mut run), Style::new().fg(lane_color(run_lane))));
         }
         run_lane = cell.lane;
-        run.push(cell.ch);
+        run.push(if plain { ascii(cell.ch) } else { cell.ch });
     }
     if !run.is_empty() {
         spans.push(Span::styled(run, Style::new().fg(lane_color(run_lane))));
@@ -71,7 +87,7 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
                 .set_style(area, Style::new().bg(Color::Indexed(237)));
         }
 
-        let mut spans = graph_spans(&app.rows[index], graph_width);
+        let mut spans = graph_spans(&app.rows[index], graph_width, app.ascii);
         spans.push(Span::raw("  "));
         spans.extend([
             Span::styled(commit.short_hash().to_string(), Style::new().fg(Color::Yellow)),
@@ -80,15 +96,16 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             Span::raw("  "),
             Span::styled(pad_right(&commit.author, AUTHOR_WIDTH), Style::new().fg(Color::Cyan)),
             Span::raw("  "),
-            Span::styled(
+        ]);
+        spans.extend(ref_pills(commit));
+        spans.push(Span::styled(
                 commit.subject.clone(),
                 if selected {
                     Style::new().add_modifier(Modifier::BOLD)
                 } else {
                     Style::new()
                 },
-            ),
-        ]);
+            ));
         frame.render_widget(Line::from(spans), area);
     }
 
@@ -105,6 +122,28 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Line::styled(status, Style::new().fg(Color::Black).bg(Color::Indexed(250))),
         status_area,
     );
+}
+
+/// Coloured pills for the refs on a commit, Git Graph style, each followed
+/// by a space. Empty when the commit has no refs.
+fn ref_pills(commit: &Commit) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
+    for r in commit.parsed_refs() {
+        let (fg, bg) = match r.kind {
+            RefKind::Head => (Color::Black, Color::White),
+            RefKind::Branch => (Color::Black, Color::Green),
+            RefKind::Remote => (Color::White, Color::Blue),
+            RefKind::Tag => (Color::Black, Color::Yellow),
+            RefKind::Other => (Color::Black, Color::Gray),
+        };
+        let mut style = Style::new().fg(fg).bg(bg);
+        if r.is_head {
+            style = style.add_modifier(Modifier::BOLD | Modifier::UNDERLINED);
+        }
+        spans.push(Span::styled(format!(" {} ", r.name), style));
+        spans.push(Span::raw(" "));
+    }
+    spans
 }
 
 /// Truncate to `width` columns and pad on the right.

@@ -18,6 +18,10 @@ struct Args {
     #[arg(long)]
     all: bool,
 
+    /// Draw the graph with plain ASCII instead of box-drawing characters
+    #[arg(long)]
+    ascii: bool,
+
     /// Stop after this many commits
     #[arg(short = 'n', long = "max-count", value_name = "N")]
     max_count: Option<usize>,
@@ -34,6 +38,7 @@ fn main() -> Result<()> {
 
     let commits = git::log(args.all, args.max_count)?;
     let mut app = app::App::new(commits);
+    app.ascii = args.ascii;
 
     let mut terminal = ratatui::init();
     let result = run(&mut terminal, &mut app);

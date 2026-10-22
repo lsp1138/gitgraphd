@@ -22,6 +22,13 @@ in `~/.cargo/bin`. It needs `git` on the PATH and uses whatever `core.pager`
 git is configured with, so if you already use delta for `git diff`, `gg`
 uses it too. Any pager works; delta just looks best.
 
+## Status
+
+Version 0.1. Built and used daily on Ubuntu 26.04 inside tmux with
+Alacritty. It only talks to `git` and the terminal, so it should work on any
+Linux or macOS with git installed, but those are untested; reports welcome.
+Needs Rust 1.88 or newer to build.
+
 ## Why
 
 tig does a lot; Git Graph in VS Code draws the nicest commit tree; delta

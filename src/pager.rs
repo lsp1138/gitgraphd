@@ -16,10 +16,12 @@ pub fn show(hash: &str, stat: bool) -> Result<()> {
     // Two things make a short diff vanish before we get the screen back:
     // git sets LESS=FRX when LESS is unset (F = quit if one screen), and
     // delta's default paging mode adds --quit-if-one-screen on its own.
-    // Give less a LESS of our own, with mouse/trackpad scrolling, and tell
-    // delta to always page (a no-op for any other pager).
+    // Give less a LESS of our own, with mouse/trackpad scrolling where the
+    // installed less supports it, and tell delta to always page (a no-op
+    // for any other pager).
     let less = std::env::var("LESS").unwrap_or_default();
-    cmd.env("LESS", format!("{less} -R --mouse").trim().to_string());
+    let mouse = if less_supports_mouse() { " --mouse" } else { "" };
+    cmd.env("LESS", format!("{less} -R{mouse}").trim().to_string());
     cmd.args(["-c", "delta.paging=always", "show"]);
     if stat {
         cmd.arg("--stat");
@@ -35,4 +37,22 @@ pub fn show(hash: &str, stat: bool) -> Result<()> {
         bail!("git show exited with {status}");
     }
     Ok(())
+}
+
+/// `--mouse` arrived in less 530; the less that ships with macOS is older
+/// and would refuse to start with it. Checked once per process.
+fn less_supports_mouse() -> bool {
+    use std::sync::OnceLock;
+    static SUPPORTED: OnceLock<bool> = OnceLock::new();
+    *SUPPORTED.get_or_init(|| {
+        let Ok(out) = Command::new("less").arg("--version").output() else {
+            return false;
+        };
+        // first line: "less 668 (GNU regular expressions)"
+        String::from_utf8_lossy(&out.stdout)
+            .split_whitespace()
+            .nth(1)
+            .and_then(|v| v.parse::<u32>().ok())
+            .is_some_and(|v| v >= 530)
+    })
 }

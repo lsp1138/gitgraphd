@@ -67,7 +67,7 @@ Run `gg` inside a repository. It shows every branch, like Git Graph;
 | `T`                   | toggle compact age / full timestamp  |
 | `H`                   | copy the full hash to the clipboard  |
 | `F`                   | `git fetch --all --prune`, reload    |
-| `q` / `Esc`           | quit                                 |
+| `q`                   | quit                                 |
 
 `C` checks out the local branch on the selected commit; with only a remote
 branch there it creates the tracking branch the way `git checkout name`

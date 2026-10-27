@@ -153,7 +153,9 @@ impl App {
             return Action::None;
         }
         match (key.code, ctrl) {
-            (KeyCode::Char('q'), _) | (KeyCode::Esc, _) | (KeyCode::Char('c'), true) => {
+            // Esc is deliberately not quit: with Caps-tap-as-Esc setups a stray tap
+            // would close the graph. Like tig, q (and Ctrl-C) quit.
+            (KeyCode::Char('q'), _) | (KeyCode::Char('c'), true) => {
                 return Action::Quit;
             }
             (KeyCode::Char('j'), false) | (KeyCode::Down, _) => self.move_by(1),

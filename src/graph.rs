@@ -81,11 +81,22 @@ impl Graph {
         for (commit, row) in commits.iter().zip(rows) {
             let colour = row.node_colour();
             map.insert(commit.hash.clone(), colour);
-            for r in commit.parsed_refs() {
+            let refs = commit.parsed_refs();
+            if !refs.is_empty() {
+                // a branch tip, under a key a new commit on top of it looks up
+                map.insert(Self::tip_key(&commit.hash), colour);
+            }
+            for r in refs {
                 map.insert(r.name, colour);
             }
         }
         map
+    }
+
+    /// Memory key for "this commit carried a ref": `^` cannot start a ref
+    /// name or appear in a hash.
+    fn tip_key(hash: &str) -> String {
+        format!("^{hash}")
     }
 
     pub fn push(&mut self, commit: &Commit) -> Row {
@@ -119,9 +130,13 @@ impl Graph {
         let node_colour = match &self.lanes[node] {
             Some(l) => l.colour,
             None => {
+                // A tip that arrived since the last layout (a fetch brought
+                // it) has no memory of its own, but if it sits directly on a
+                // branch tip it is that branch's line continued.
                 let mut keys: Vec<String> =
                     commit.parsed_refs().into_iter().map(|r| r.name).collect();
                 keys.push(commit.hash.clone());
+                keys.extend(commit.parents.iter().map(|p| Self::tip_key(p)));
                 self.alloc_colour_for(&keys)
             }
         };
@@ -255,22 +270,40 @@ impl Graph {
         }
     }
 
-    /// The colour remembered for any of `keys` if it is free, else the next
-    /// one in the cycle.
+    /// The colour remembered for any of `keys` if it is free. A line nothing
+    /// remembers takes the lowest free colour that no remembered line owns,
+    /// so a branch that appeared since the last layout cannot push main and
+    /// dev out of their colours; with nothing remembered, the lowest free.
     fn alloc_colour_for(&mut self, keys: &[String]) -> usize {
-        if !self.remembered.is_empty() {
-            for key in keys {
-                let Some(&c) = self.remembered.get(key) else { continue };
-                if c >= self.colours_in_use.len() {
-                    self.colours_in_use.resize(c + 1, false);
-                }
-                if !self.colours_in_use[c] {
-                    self.colours_in_use[c] = true;
-                    return c;
-                }
+        if self.remembered.is_empty() {
+            return self.alloc_colour();
+        }
+        for key in keys {
+            let Some(&c) = self.remembered.get(key) else { continue };
+            if self.reserve(c) {
+                return c;
             }
         }
-        self.alloc_colour()
+        let c = (0..)
+            .find(|c| {
+                !self.remembered.values().any(|r| r == c)
+                    && !self.colours_in_use.get(*c).copied().unwrap_or(false)
+            })
+            .expect("some colour is free");
+        self.reserve(c);
+        c
+    }
+
+    /// Mark `c` in use; false if a live line already has it.
+    fn reserve(&mut self, c: usize) -> bool {
+        if c >= self.colours_in_use.len() {
+            self.colours_in_use.resize(c + 1, false);
+        }
+        if self.colours_in_use[c] {
+            return false;
+        }
+        self.colours_in_use[c] = true;
+        true
     }
 
     /// Lowest colour no live line is using.
@@ -434,6 +467,55 @@ mod tests {
         let mut fresh = Graph::new();
         let fresh_cols: Vec<usize> = after.iter().map(|c| fresh.push(c).node_colour()).collect();
         assert_eq!(fresh_cols, [0, 1, 0, 0]);
+    }
+
+    fn with_ref(hash: &str, parents: &[&str], refs: &str) -> Commit {
+        let mut commit = c(hash, parents);
+        commit.refs = refs.into();
+        commit
+    }
+
+    fn recolour(before: &[Commit], after: &[Commit]) -> Vec<usize> {
+        let old_rows = rows(before);
+        let mut g = Graph::with_memory(Graph::memory(before, &old_rows));
+        after.iter().map(|c| g.push(c).node_colour()).collect()
+    }
+
+    #[test]
+    fn fetched_branch_does_not_steal_colours() {
+        // before: main (0) and dev (1) on a shared base
+        let before = [
+            with_ref("a", &["x"], "refs/heads/main"),
+            with_ref("b", &["x"], "refs/heads/dev"),
+            c("x", &[]),
+        ];
+        // a fetch brings a branch nobody has seen, newer than everything
+        let after = [
+            with_ref("f", &["x"], "refs/remotes/origin/feature"),
+            with_ref("a", &["x"], "refs/heads/main"),
+            with_ref("b", &["x"], "refs/heads/dev"),
+            c("x", &[]),
+        ];
+        // main and dev keep 0 and 1; the newcomer takes the next colour
+        assert_eq!(recolour(&before, &after), [2, 0, 1, 2]);
+    }
+
+    #[test]
+    fn fetched_commit_on_top_of_a_branch_keeps_that_branch_colour() {
+        // before: dev (0) is newest, main (1) below it
+        let before = [
+            with_ref("b", &["x"], "refs/heads/dev"),
+            with_ref("a", &["x"], "refs/heads/main"),
+            c("x", &[]),
+        ];
+        // someone pushed f on top of main under a new name: f is main's line
+        let after = [
+            with_ref("f", &["a"], "refs/remotes/origin/hotfix"),
+            with_ref("b", &["x"], "refs/heads/dev"),
+            with_ref("a", &["x"], "refs/heads/main"),
+            c("x", &[]),
+        ];
+        assert_eq!(recolour(&before, &after), [1, 0, 1, 1]);
     }
 
     #[test]

@@ -119,7 +119,9 @@ first-parent chain until it ends by merging into another line. A feature
 branch sitting directly on top of dev is the same line as dev and shares its
 colour; one that diverged gets its own. A new line takes the lowest colour
 no live line is using, from Git Graph's default twelve colours, and a reload
-after `F` keeps the colours lines had before, so main and dev do not swap.
+after `F` keeps the colours lines had before, so main and dev do not swap:
+a branch the fetch brought in takes a colour none of them had, and commits
+fetched on top of a branch stay in that branch's colour.
 
 Ref pills take the colour of the line their commit is on, as in Git Graph,
 and follow its label rules: a local branch and its remote on the same commit

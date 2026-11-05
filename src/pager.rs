@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, bail};
@@ -35,6 +36,49 @@ pub fn show(hash: &str, stat: bool) -> Result<()> {
         .context("could not run git show")?;
     if !status.success() {
         bail!("git show exited with {status}");
+    }
+    Ok(())
+}
+
+/// Page already-coloured text through the same pager git would use (the
+/// `GG_PAGER` override, else git's own choice), so a diff gg assembled
+/// itself looks the same as one `git show` produced. Returns when the
+/// pager exits.
+pub fn page(text: &[u8]) -> Result<()> {
+    let pager = match std::env::var("GG_PAGER") {
+        Ok(p) if !p.is_empty() => p,
+        _ => {
+            let out = Command::new("git").args(["var", "GIT_PAGER"]).output();
+            match out {
+                Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+                _ => "less".to_string(),
+            }
+        }
+    };
+    if pager == "cat" {
+        std::io::stdout().write_all(text)?;
+        return Ok(());
+    }
+    let less = std::env::var("LESS").unwrap_or_default();
+    let mouse = if less_supports_mouse() { " --mouse" } else { "" };
+    let mut child = Command::new("sh")
+        .arg("-c")
+        .arg(&pager)
+        .env("LESS", format!("{less} -R{mouse}").trim().to_string())
+        // the same `-c delta.paging=always` git would export to delta
+        .env("GIT_CONFIG_PARAMETERS", "'delta.paging=always'")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .with_context(|| format!("could not run pager '{pager}'"))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        // quitting the pager early closes the pipe; that is not an error
+        let _ = stdin.write_all(text);
+    }
+    let status = child.wait().context("pager")?;
+    if !status.success() {
+        bail!("pager exited with {status}");
     }
     Ok(())
 }

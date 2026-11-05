@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use unicode_width::UnicodeWidthStr;
 
-use crate::git::{Commit, RefKind};
+use crate::git::{Commit, RefKind, Worktree};
 use crate::graph::{Graph, Row};
 
 pub enum Action {
@@ -13,6 +13,8 @@ pub enum Action {
     Fetch,
     /// Show the diff of this hash; `stat` asks for the file summary only.
     ShowDiff { hash: String, stat: bool },
+    /// Show what is staged, unstaged and untracked, in one pager.
+    ShowWorktree,
     /// Put this hash on the clipboard.
     CopyHash(String),
     /// `git checkout` this branch or commit, then reload.
@@ -56,6 +58,8 @@ pub struct App {
     pub confirm_delete: Option<String>,
     /// How graph lines are drawn.
     pub style: LineStyle,
+    /// Uncommitted changes, drawn as a row above HEAD; `None` when clean.
+    pub worktree: Option<Worktree>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -90,6 +94,7 @@ impl App {
             remote_branches: HashSet::new(),
             confirm_delete: None,
             style: LineStyle::Heavy,
+            worktree: None,
         };
         for c in commits {
             app.push(c);
@@ -113,7 +118,8 @@ impl App {
 
     /// Drop the history ahead of a reload, remembering where the cursor was.
     pub fn reset(&mut self) {
-        self.pending_cursor = self.selected().map(|c| c.hash.clone());
+        self.pending_cursor = self.selected().filter(|c| !c.is_worktree()).map(|c| c.hash.clone());
+        let lane = self.head_lane();
         self.graph = Graph::with_memory(Graph::memory(&self.commits, &self.rows));
         self.commits.clear();
         self.rows.clear();
@@ -123,6 +129,76 @@ impl App {
         self.timestamp_width = 0;
         self.error = None;
         self.loading = true;
+        self.push_worktree_row(lane);
+    }
+
+    /// Take a fresh `git status`. The row appearing or going away lays the
+    /// graph out again; a change of counts only updates the row's text.
+    pub fn set_worktree(&mut self, worktree: Option<Worktree>) {
+        if worktree == self.worktree {
+            return;
+        }
+        let same_shape = match (&worktree, &self.worktree) {
+            (Some(new), Some(old)) => new.head == old.head,
+            _ => false,
+        };
+        self.worktree = worktree;
+        if same_shape {
+            if let (Some(w), Some(row)) = (&self.worktree, self.commits.first_mut()) {
+                row.subject = format!("Uncommitted changes  {}", w.summary());
+            }
+            return;
+        }
+        self.relayout();
+    }
+
+    /// Lay the graph out again with the same colours, with or without the
+    /// uncommitted-changes row. The row goes in HEAD's lane, found by laying
+    /// out without it first, so the rows below keep their lanes and colours
+    /// instead of all shifting right by one. Called once more when a load
+    /// finishes, since the lane was only a guess while commits streamed in.
+    pub fn relayout(&mut self) {
+        let selected = self.selected().map(|c| c.hash.clone());
+        let memory = Graph::memory(&self.commits, &self.rows);
+        let commits: Vec<Commit> = self.commits.drain(..).filter(|c| !c.is_worktree()).collect();
+        self.rows.clear();
+        self.graph = Graph::with_memory(memory.clone());
+        let mut rows: Vec<Row> = commits.iter().map(|c| self.graph.push(c)).collect();
+        if let Some(w) = &self.worktree {
+            let lane = commits.iter().position(|c| c.hash == w.head).map(|i| rows[i].lane);
+            self.graph = Graph::with_memory(memory);
+            self.push_worktree_row(lane);
+            rows = commits.iter().map(|c| self.graph.push(c)).collect();
+        }
+        self.rows.extend(rows);
+        self.commits.extend(commits);
+        // Stay on the same commit; a vanished row leaves the cursor on top.
+        self.cursor = selected
+            .and_then(|h| self.commits.iter().position(|c| c.hash == h))
+            .unwrap_or(0);
+        self.scroll_to_cursor();
+    }
+
+    /// Lane of the commit the uncommitted changes sit on, in the current layout.
+    fn head_lane(&self) -> Option<usize> {
+        let head = self.worktree.as_ref()?.head.as_str();
+        self.commits.iter().position(|c| c.hash == head).map(|i| self.rows[i].lane)
+    }
+
+    /// Push the uncommitted row into `lane`. Without a lane (first load, or
+    /// HEAD not among the commits) nothing is pushed: `relayout` adds the
+    /// row once the load is done and HEAD's lane is known, rather than lay
+    /// the whole graph out around a guess and shift it afterwards.
+    fn push_worktree_row(&mut self, lane: Option<usize>) {
+        if let (Some(w), Some(lane)) = (&self.worktree, lane) {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            let c = Commit::worktree(w, now);
+            self.rows.push(self.graph.push_at(&c, lane));
+            self.commits.push(c);
+        }
     }
 
     pub fn selected(&self) -> Option<&Commit> {
@@ -166,6 +242,10 @@ impl App {
             (KeyCode::Char('T'), _) => self.show_timestamp = !self.show_timestamp,
             (KeyCode::Char('C'), _) => {
                 if let Some(c) = self.selected() {
+                    if c.is_worktree() {
+                        self.status = "nothing to check out here".into();
+                        return Action::None;
+                    }
                     return Action::Checkout(checkout_target(c));
                 }
             }
@@ -182,11 +262,18 @@ impl App {
             }
             (KeyCode::Char('H'), _) => {
                 if let Some(c) = self.selected() {
+                    if c.is_worktree() {
+                        self.status = "not committed yet, so no hash".into();
+                        return Action::None;
+                    }
                     return Action::CopyHash(c.hash.clone());
                 }
             }
             (KeyCode::Char(' '), _) | (KeyCode::Enter, _) => {
                 if let Some(c) = self.selected() {
+                    if c.is_worktree() {
+                        return Action::ShowWorktree;
+                    }
                     // The root commit's diff is the whole initial import, so
                     // show what it contains rather than every file as added.
                     return Action::ShowDiff { hash: c.hash.clone(), stat: c.parents.is_empty() };
@@ -290,7 +377,136 @@ pub fn compact_age(secs: i64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::compact_age;
+    use super::{App, compact_age};
+    use crate::git::{Commit, Worktree};
+
+    fn c(hash: &str, parents: &[&str], refs: &str) -> Commit {
+        Commit {
+            hash: hash.into(),
+            parents: parents.iter().map(|p| p.to_string()).collect(),
+            author: String::new(),
+            date: String::new(),
+            timestamp: String::new(),
+            time: 0,
+            refs: refs.into(),
+            subject: String::new(),
+        }
+    }
+
+    fn dirty(head: &str, staged: usize) -> Option<Worktree> {
+        Some(Worktree { head: head.into(), staged, modified: 1, untracked: vec![] })
+    }
+
+    /// main (HEAD) and a feature branch, feature's tip first as in date order.
+    fn two_branches() -> App {
+        App::new(vec![
+            c("f2", &["f1"], "refs/heads/feature"),
+            c("m2", &["m1"], "HEAD -> refs/heads/main"),
+            c("f1", &["m1"], ""),
+            c("m1", &[], ""),
+        ])
+    }
+
+    fn hashes(app: &App) -> Vec<&str> {
+        app.commits.iter().map(|c| c.hash.as_str()).collect()
+    }
+
+    fn colours(app: &App) -> Vec<usize> {
+        app.rows.iter().map(|r| r.node_colour()).collect()
+    }
+
+    #[test]
+    fn worktree_row_sits_on_top_and_joins_the_head_line() {
+        let mut app = two_branches();
+        let before = colours(&app);
+        app.cursor = 1; // on m2
+        app.set_worktree(dirty("m2", 2));
+        assert_eq!(hashes(&app), ["", "f2", "m2", "f1", "m1"]);
+        assert_eq!(app.cursor, 2, "cursor follows the commit it was on");
+        assert_eq!(app.rows[0].lane, app.rows[2].lane, "sits in HEAD's lane");
+        assert_eq!(app.rows[0].text(), "  ◌");
+        assert_eq!(app.rows[0].node_colour(), app.rows[2].node_colour(), "same line as HEAD");
+        assert_eq!(colours(&app)[1..], before, "nobody else changes colour");
+        let lanes: Vec<usize> = app.rows[1..].iter().map(|r| r.lane).collect();
+        assert_eq!(lanes, [0, 1, 0, 0], "nobody else changes lane");
+        assert!(app.commits[0].subject.ends_with("2 staged · 1 modified"));
+    }
+
+    #[test]
+    fn worktree_row_text_updates_without_relayout() {
+        let mut app = two_branches();
+        app.set_worktree(dirty("m2", 2));
+        app.set_worktree(dirty("m2", 5));
+        assert_eq!(app.commits.len(), 5);
+        assert!(app.commits[0].subject.ends_with("5 staged · 1 modified"));
+    }
+
+    #[test]
+    fn worktree_row_goes_away_when_clean() {
+        let mut app = two_branches();
+        let before = colours(&app);
+        app.set_worktree(dirty("m2", 1));
+        app.cursor = 0; // on the row itself
+        app.set_worktree(None);
+        assert_eq!(hashes(&app), ["f2", "m2", "f1", "m1"]);
+        assert_eq!(app.cursor, 0);
+        assert_eq!(colours(&app), before);
+        assert!(app.worktree.is_none());
+    }
+
+    #[test]
+    fn worktree_row_survives_a_reload() {
+        let mut app = two_branches();
+        app.set_worktree(dirty("m2", 1));
+        let before = colours(&app);
+        app.cursor = 2;
+        app.reset();
+        assert_eq!(hashes(&app), [""], "the row is back before any commit");
+        for commit in two_branches().commits {
+            app.push(commit);
+        }
+        assert_eq!(hashes(&app), ["", "f2", "m2", "f1", "m1"]);
+        assert_eq!(app.cursor, 2);
+        assert_eq!(app.rows[0].lane, 1, "remembered HEAD's lane across the reload");
+        assert_eq!(colours(&app), before);
+    }
+
+    #[test]
+    fn dirty_start_adds_the_row_once_loading_is_done() {
+        // Fresh start with a dirty tree: HEAD's lane is unknown until the
+        // commits are in, so the row waits rather than push every lane right.
+        let mut app = App::new(Vec::new());
+        app.set_worktree(dirty("m2", 1));
+        for commit in two_branches().commits {
+            app.push(commit);
+        }
+        assert_eq!(hashes(&app), ["f2", "m2", "f1", "m1"]);
+        let clean = two_branches();
+        assert_eq!(colours(&app), colours(&clean));
+        // What main does when the stream ends.
+        app.relayout();
+        assert_eq!(hashes(&app), ["", "f2", "m2", "f1", "m1"]);
+        assert_eq!(app.rows[0].lane, 1, "over HEAD's line");
+        let lanes: Vec<usize> = app.rows[1..].iter().map(|r| r.lane).collect();
+        let clean_lanes: Vec<usize> = clean.rows.iter().map(|r| r.lane).collect();
+        assert_eq!(lanes, clean_lanes);
+        assert_eq!(colours(&app)[1..], colours(&clean), "nothing changed colour");
+    }
+
+    #[test]
+    fn worktree_row_keys_do_nothing_harmful() {
+        use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        let mut app = two_branches();
+        app.set_worktree(dirty("m2", 1));
+        app.cursor = 0;
+        for ch in ['C', 'H', 'X'] {
+            let a = app.handle_key(KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE));
+            assert!(matches!(a, super::Action::None), "{ch}");
+            assert!(!app.status.is_empty(), "{ch} explains itself");
+        }
+        let a = app.handle_key(KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE));
+        assert!(matches!(a, super::Action::ShowWorktree));
+    }
 
     #[test]
     fn compact_ages() {

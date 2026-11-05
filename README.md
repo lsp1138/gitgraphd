@@ -88,6 +88,14 @@ is in mouse mode, hold Shift to select text while gg is running.
 
 Inside the diff you are in git's pager, so `q` returns to the list.
 
+While the working tree has anything uncommitted, a dotted node sits above
+HEAD: `Uncommitted changes  2 staged · 3 modified · 1 untracked`. `Space`
+there shows one diff in three parts, staged first, then not staged, then
+each untracked file as an addition, so the whole state of the tree scrolls
+past in one go. gg runs `git status` every two seconds, so the row appears,
+updates and disappears as you work in another window. `--no-status` leaves
+the row out and stops the polling, for a tree where `git status` is slow.
+
 Dates are committer dates, which is what the default date order sorts by.
 The line above the key hints shows the position and the selected commit's
 full subject, in case the row cut it off. The full message is part of what
@@ -104,7 +112,8 @@ Flags: `--head`, `-n N`, `--order=date|author-date|topo` (date is the default,
 as in Git Graph; topo keeps merged branches' commits together but opens far
 more lanes on busy repositories), `--date=<git date format>`, `--ascii` for
 terminals without box-drawing glyphs, `--thin` for thin rounded lines instead
-of the heavy square ones, and an optional repository path.
+of the heavy square ones, `--no-status` to skip the uncommitted-changes row,
+and an optional repository path.
 
 `GG_PAGER` overrides the pager for gg only, for example `GG_PAGER=less`.
 

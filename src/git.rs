@@ -41,6 +41,25 @@ pub struct Commit {
 }
 
 impl Commit {
+    /// The row for uncommitted changes: no hash, sits on top of HEAD.
+    pub fn worktree(w: &Worktree, now: i64) -> Self {
+        Self {
+            hash: String::new(),
+            parents: vec![w.head.clone()],
+            author: String::new(),
+            date: "now".into(),
+            timestamp: "now".into(),
+            time: now,
+            refs: String::new(),
+            subject: format!("Uncommitted changes  {}", w.summary()),
+        }
+    }
+
+    /// True for the synthetic uncommitted-changes row.
+    pub fn is_worktree(&self) -> bool {
+        self.hash.is_empty()
+    }
+
     pub fn short_hash(&self) -> &str {
         &self.hash[..self.hash.len().min(7)]
     }
@@ -275,6 +294,134 @@ fn parse_line(line: &str) -> Option<Commit> {
     })
 }
 
+/// What is in the working tree beyond HEAD: counts for the graph row and
+/// the untracked paths for the diff. `None` when the tree is clean.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Worktree {
+    /// The commit the changes sit on top of.
+    pub head: String,
+    pub staged: usize,
+    /// Tracked files changed but not staged (including conflicts).
+    pub modified: usize,
+    pub untracked: Vec<String>,
+}
+
+impl Worktree {
+    /// Text for the graph row: `2 staged · 3 modified · 1 untracked`.
+    pub fn summary(&self) -> String {
+        let mut parts = Vec::new();
+        if self.staged > 0 {
+            parts.push(format!("{} staged", self.staged));
+        }
+        if self.modified > 0 {
+            parts.push(format!("{} modified", self.modified));
+        }
+        if !self.untracked.is_empty() {
+            parts.push(format!("{} untracked", self.untracked.len()));
+        }
+        parts.join(" · ")
+    }
+}
+
+/// Ask git what is uncommitted on top of HEAD. Errors (no HEAD yet, not a
+/// repository) count as clean.
+pub fn worktree() -> Option<Worktree> {
+    let head = Command::new("git").args(["rev-parse", "HEAD"]).output().ok()?;
+    if !head.status.success() {
+        return None;
+    }
+    let head = String::from_utf8_lossy(&head.stdout).trim().to_string();
+    let out = Command::new("git")
+        .args(["status", "--porcelain=v1", "-z", "--untracked-files=all"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    parse_status(&String::from_utf8_lossy(&out.stdout), head)
+}
+
+/// Parse `git status --porcelain=v1 -z` output.
+fn parse_status(out: &str, head: String) -> Option<Worktree> {
+    let mut w = Worktree { head, staged: 0, modified: 0, untracked: Vec::new() };
+    let mut entries = out.split('\0');
+    while let Some(entry) = entries.next() {
+        if entry.len() < 4 {
+            continue;
+        }
+        let (xy, path) = entry.split_at(3);
+        let x = xy.as_bytes()[0];
+        let y = xy.as_bytes()[1];
+        if xy.starts_with("??") {
+            w.untracked.push(path.to_string());
+            continue;
+        }
+        if x == b'R' || x == b'C' {
+            // a rename carries the old path in the next entry
+            entries.next();
+        }
+        if x != b' ' {
+            w.staged += 1;
+        }
+        if y != b' ' {
+            w.modified += 1;
+        }
+    }
+    (w.staged + w.modified + w.untracked.len() > 0).then_some(w)
+}
+
+/// How many untracked files get shown in full.
+const MAX_UNTRACKED_DIFFS: usize = 50;
+
+/// The staged diff, the unstaged diff and every untracked file as an
+/// addition, in that order, each under a header, coloured for the pager.
+pub fn worktree_diff(untracked: &[String]) -> Result<Vec<u8>> {
+    fn diff(args: &[&str]) -> Result<Vec<u8>> {
+        let out = Command::new("git")
+            .args(["-c", "color.ui=always", "diff", "--color=always"])
+            .args(args)
+            .output()
+            .context("could not run git diff")?;
+        // --no-index exits 1 whenever the files differ
+        Ok(out.stdout)
+    }
+    fn header(buf: &mut Vec<u8>, title: &str) {
+        if !buf.is_empty() {
+            buf.push(b'\n');
+        }
+        buf.extend_from_slice(format!("\x1b[1m────  {title}  ────\x1b[0m\n\n").as_bytes());
+    }
+    let mut buf = Vec::new();
+    let staged = diff(&["--cached"])?;
+    if !staged.is_empty() {
+        header(&mut buf, "staged");
+        buf.extend_from_slice(&staged);
+    }
+    let unstaged = diff(&[])?;
+    if !unstaged.is_empty() {
+        header(&mut buf, "not staged");
+        buf.extend_from_slice(&unstaged);
+    }
+    if !untracked.is_empty() {
+        header(&mut buf, "untracked");
+        // One git per file; a tree full of untracked build output would
+        // take ages and nobody reads a thousand added files anyway.
+        for path in untracked.iter().take(MAX_UNTRACKED_DIFFS) {
+            buf.extend_from_slice(&diff(&["--no-index", "--", "/dev/null", path])?);
+        }
+        if untracked.len() > MAX_UNTRACKED_DIFFS {
+            buf.extend_from_slice(
+                format!("\n... and {} more untracked files\n", untracked.len() - MAX_UNTRACKED_DIFFS)
+                    .as_bytes(),
+            );
+        }
+    }
+    if buf.is_empty() {
+        buf.extend_from_slice(b"nothing uncommitted\n");
+    }
+    Ok(buf)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -331,5 +478,21 @@ mod tests {
         assert!(c.parents.is_empty());
         assert_eq!(c.refs, "");
         assert_eq!(c.subject, "init");
+    }
+
+    #[test]
+    fn status_counts_staged_modified_and_untracked() {
+        let out = "M  a.rs\0 M b.rs\0MM c.rs\0?? new.txt\0R  new.rs\0old.rs\0UU war.rs\0";
+        let w = parse_status(out, "abc".into()).unwrap();
+        assert_eq!(w.head, "abc");
+        assert_eq!(w.staged, 4); // a, c, rename, conflict
+        assert_eq!(w.modified, 3); // b, c, conflict
+        assert_eq!(w.untracked, vec!["new.txt"]);
+        assert_eq!(w.summary(), "4 staged · 3 modified · 1 untracked");
+    }
+
+    #[test]
+    fn clean_status_is_none() {
+        assert!(parse_status("", "abc".into()).is_none());
     }
 }

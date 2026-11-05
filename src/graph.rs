@@ -79,6 +79,9 @@ impl Graph {
     pub fn memory(commits: &[Commit], rows: &[Row]) -> HashMap<String, usize> {
         let mut map = HashMap::with_capacity(commits.len() + 64);
         for (commit, row) in commits.iter().zip(rows) {
+            if commit.is_worktree() {
+                continue;
+            }
             let colour = row.node_colour();
             map.insert(commit.hash.clone(), colour);
             let refs = commit.parsed_refs();
@@ -100,6 +103,22 @@ impl Graph {
     }
 
     pub fn push(&mut self, commit: &Commit) -> Row {
+        self.push_in(commit, None)
+    }
+
+    /// Like `push`, but a commit that starts a new line starts it in lane
+    /// `lane`, leaving any free lanes before it free. The uncommitted-changes
+    /// row uses this to sit in HEAD's lane rather than shove every lane right.
+    pub fn push_at(&mut self, commit: &Commit, lane: usize) -> Row {
+        self.push_in(commit, Some(lane))
+    }
+
+    fn push_in(&mut self, commit: &Commit, preferred: Option<usize>) -> Row {
+        if let Some(l) = preferred {
+            while self.lanes.len() <= l {
+                self.lanes.push(None);
+            }
+        }
         let up: Vec<bool> = self.lanes.iter().map(Option::is_some).collect();
         let waiting: Vec<usize> = self
             .lanes
@@ -109,9 +128,10 @@ impl Graph {
             .map(|(i, _)| i)
             .collect();
 
-        let node = match waiting.first() {
-            Some(&i) => i,
-            None => self.alloc_lane(),
+        let node = match (waiting.first(), preferred) {
+            (Some(&i), _) => i,
+            (None, Some(l)) if self.lanes[l].is_none() => l,
+            (None, _) => self.alloc_lane(),
         };
 
         // Lanes merging into this node end here. Their colours stay reserved
@@ -237,7 +257,9 @@ impl Graph {
             cells[2 * j] = Cell { ch, colour: colour_at(j) };
         }
 
-        let node_ch = if commit.is_head() {
+        let node_ch = if commit.is_worktree() {
+            '◌'
+        } else if commit.is_head() {
             '◉'
         } else if commit.parents.len() > 1 {
             '○'
@@ -525,5 +547,19 @@ mod tests {
             g.push(&commit);
         }
         assert_eq!(g.width, 5);
+    }
+
+    #[test]
+    fn push_at_leaves_earlier_lanes_free() {
+        let mut g = Graph::new();
+        let top = g.push_at(&c("w", &["b"]), 1);
+        assert_eq!(top.lane, 1);
+        assert_eq!(top.text(), "  ●");
+        // the next new line takes the free lane 0, not lane 2
+        let a = g.push(&c("a", &["a0"]));
+        assert_eq!(a.lane, 0);
+        let b = g.push(&c("b", &[]));
+        assert_eq!(b.lane, 1, "w's line continues into b");
+        assert_eq!(b.node_colour(), top.node_colour());
     }
 }

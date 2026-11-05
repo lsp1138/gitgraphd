@@ -61,6 +61,10 @@ struct Args {
     #[arg(long, value_name = "FORMAT")]
     date: Option<String>,
 
+    /// Leave out the "Uncommitted changes" row (and stop polling git status)
+    #[arg(long)]
+    no_status: bool,
+
     /// Repository to open (default: current directory)
     path: Option<std::path::PathBuf>,
 }
@@ -89,6 +93,9 @@ fn gg() -> Result<()> {
     let rx = git::stream(&opts)?;
     let mut app = app::App::new(Vec::new());
     app.remote_branches = git::remote_branches();
+    if !args.no_status {
+        app.set_worktree(git::worktree());
+    }
     // Nudge once; anyone who chose their own pager never sees this.
     if !git::has_pager_config() && !git::delta_on_path() {
         app.status = "diffs use plain git colours; install delta for the full look: cargo install git-delta".into();
@@ -122,7 +129,7 @@ fn gg() -> Result<()> {
     }));
 
     let mut terminal = enter()?;
-    let result = run(&mut terminal, &mut app, &opts, rx);
+    let result = run(&mut terminal, &mut app, &opts, rx, !args.no_status);
     leave();
     result
 }
@@ -167,6 +174,20 @@ fn prefers_dark() -> bool {
     true
 }
 
+/// Hand the terminal to a pager without leaving the alternate screen, so
+/// the shell never shows through; clear it first so nothing of the list
+/// shows under a short diff. less drops back to the main screen on exit;
+/// re-enter at once.
+fn with_terminal_released<T>(terminal: &mut Term, f: impl FnOnce() -> T) -> Result<T> {
+    let _ = execute!(stdout(), DisableMouseCapture, Clear(ClearType::All), MoveTo(0, 0), Show);
+    let _ = disable_raw_mode();
+    let out = f();
+    let _ = enable_raw_mode();
+    let _ = execute!(stdout(), EnterAlternateScreen, EnableMouseCapture, Hide);
+    terminal.clear()?;
+    Ok(out)
+}
+
 /// Pull whatever git has produced so far into the app, without blocking.
 fn drain(app: &mut app::App, rx: &Receiver<Result<git::Commit>>) {
     for _ in 0..10_000 {
@@ -176,22 +197,55 @@ fn drain(app: &mut app::App, rx: &Receiver<Result<git::Commit>>) {
             Err(TryRecvError::Empty) => return,
             Err(TryRecvError::Disconnected) => {
                 app.loading = false;
+                // The uncommitted row's lane was a guess until now.
+                if app.worktree.is_some() {
+                    app.relayout();
+                }
                 return;
             }
         }
     }
 }
 
+/// How often the working tree is checked for uncommitted changes.
+const STATUS_POLL: Duration = Duration::from_secs(2);
+
 fn run(
     terminal: &mut Term,
     app: &mut app::App,
     opts: &LogOpts,
     mut rx: Receiver<Result<git::Commit>>,
+    poll_status: bool,
 ) -> Result<()> {
     let (fetch_tx, fetch_rx) = mpsc::channel::<Result<String>>();
+    // A fresh `git status` every couple of seconds, off the UI thread so a
+    // slow one on a huge tree never freezes the list. The thread dies with
+    // the process.
+    let (status_tx, status_rx) = mpsc::channel::<Option<git::Worktree>>();
+    if poll_status {
+        thread::spawn(move || {
+            loop {
+                thread::sleep(STATUS_POLL);
+                if status_tx.send(git::worktree()).is_err() {
+                    return;
+                }
+            }
+        });
+    }
+    // After anything that moved HEAD, take status now rather than show the
+    // old row for up to two seconds, and drop any poll from before.
+    let refresh_status = |app: &mut app::App| {
+        if poll_status {
+            while status_rx.try_recv().is_ok() {}
+            app.worktree = git::worktree();
+        }
+    };
     loop {
         if app.loading {
             drain(app, &rx);
+        }
+        if let Ok(worktree) = status_rx.try_recv() {
+            app.set_worktree(worktree);
         }
         if let Ok(outcome) = fetch_rx.try_recv() {
             app.fetching = false;
@@ -244,6 +298,7 @@ fn run(
                     app.status = report;
                     app.remote_branches = git::remote_branches();
                     rx = git::stream(opts)?;
+                    refresh_status(app);
                     app.reset();
                 }
                 Err(e) => app.status = format!("checkout failed: {e:#}"),
@@ -252,6 +307,7 @@ fn run(
                 Ok(report) => {
                     app.status = report;
                     rx = git::stream(opts)?;
+                    refresh_status(app);
                     app.reset();
                 }
                 Err(e) => app.status = format!("delete failed: {e:#}"),
@@ -266,25 +322,24 @@ fn run(
                 }
             }
             app::Action::ShowDiff { hash, stat } => {
-                // Hand the terminal to git's pager without leaving the
-                // alternate screen, so the shell never shows through; clear
-                // it first so nothing of the list shows under a short diff.
-                // less drops back to the main screen on exit; re-enter at once.
-                let _ = execute!(
-                    stdout(),
-                    DisableMouseCapture,
-                    Clear(ClearType::All),
-                    MoveTo(0, 0),
-                    Show
-                );
-                let _ = disable_raw_mode();
-                let outcome = pager::show(&hash, stat);
-                let _ = enable_raw_mode();
-                let _ = execute!(stdout(), EnterAlternateScreen, EnableMouseCapture, Hide);
-                terminal.clear()?;
+                let outcome = with_terminal_released(terminal, || pager::show(&hash, stat))?;
                 if let Err(e) = outcome {
                     app.status = format!("diff failed: {e:#}");
                 }
+            }
+            app::Action::ShowWorktree => {
+                let untracked = app.worktree.as_ref().map(|w| w.untracked.clone()).unwrap_or_default();
+                let outcome = match git::worktree_diff(&untracked) {
+                    Ok(text) => with_terminal_released(terminal, || pager::page(&text))?,
+                    Err(e) => Err(e),
+                };
+                if let Err(e) = outcome {
+                    app.status = format!("diff failed: {e:#}");
+                }
+                // staging from the pager's shell is common; show it at once
+                refresh_status(app);
+                let w = app.worktree.take();
+                app.set_worktree(w);
             }
         }
     }

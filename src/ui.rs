@@ -65,6 +65,7 @@ fn glyph(ch: char, style: LineStyle) -> char {
             '●' => '*',
             '◉' => '@',
             '○' => 'o',
+            '◌' => 'o',
             '│' => '|',
             '─' => '-',
             '╮' | '╰' => '\\',
@@ -141,10 +142,15 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         let mut spans = graph_spans(&app.rows[index], graph_width, app.style);
         spans.push(Span::raw("  "));
         spans.extend([
-            Span::styled(commit.short_hash().to_string(), Style::new().fg(Color::Yellow)),
+            Span::styled(pad_right(commit.short_hash(), 7), Style::new().fg(Color::Yellow)),
             Span::raw("  "),
             {
-                let (text, width, right) = app.date_column(commit, now);
+                let (text, width, right) = if commit.is_worktree() {
+                    let (_, width, right) = app.date_column(commit, now);
+                    ("now".to_string(), width, right)
+                } else {
+                    app.date_column(commit, now)
+                };
                 let padded = if right { pad_left(&text, width) } else { pad_right(&text, width) };
                 Span::styled(padded, Style::new().fg(dim))
             },

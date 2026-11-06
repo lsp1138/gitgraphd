@@ -51,7 +51,10 @@ your repository.
 ## Use
 
 Run `gg` inside a repository. It shows every branch, like Git Graph;
-`gg --head` shows only the checked-out history, like tig.
+`gg --head` shows only the checked-out history, like tig. Every ref counts
+except the backups `git filter-branch` leaves under `refs/original/` and
+git notes, so rewritten history drops out of the graph once nothing but a
+backup ref points at it (the reflog still has it).
 
 | key                   | action                               |
 |-----------------------|--------------------------------------|

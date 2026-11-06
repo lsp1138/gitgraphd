@@ -120,7 +120,9 @@ pub fn stream(opts: &LogOpts) -> Result<Receiver<Result<Commit>>> {
     cmd.arg(format!("--{}-order", opts.order));
     cmd.arg(format!("--date={}", opts.date.as_deref().unwrap_or("relative")));
     if opts.all {
-        cmd.arg("--all");
+        // Not the backups git filter-branch leaves under refs/original, nor
+        // notes: both would keep showing history that was rewritten away.
+        cmd.args(["--exclude=refs/original/*", "--exclude=refs/notes/*", "--all"]);
     }
     if let Some(n) = opts.max_count {
         cmd.arg(format!("--max-count={n}"));

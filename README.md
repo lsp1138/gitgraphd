@@ -17,12 +17,26 @@ show delta's own history.
 
 ## Install
 
+Linux (x86_64, aarch64) or macOS (Intel, Apple silicon):
+
+```
+curl -fsSL https://raw.githubusercontent.com/lsp1138/gitgraphd/main/install.sh | sh
+```
+
+That fetches the binary for your machine from the [latest
+release](https://github.com/lsp1138/gitgraphd/releases/latest), checks it
+against `SHA256SUMS`, and puts `gg` in `~/.local/bin` (`GG_INSTALL_DIR`
+picks another directory, `GG_VERSION=v0.2.0` another release). The
+tarballs are there to download by hand as well.
+
+With a Rust toolchain:
+
 ```
 cargo install gitgraphd
 ```
 
-or from a checkout, `cargo install --path .`. Either way the binary is `gg`
-in `~/.cargo/bin`. It needs `git` on the PATH and uses whatever `core.pager`
+or from a checkout, `cargo install --path .`; then the binary is `gg` in
+`~/.cargo/bin`. It needs `git` on the PATH and uses whatever `core.pager`
 git is configured with, so if you already use delta for `git diff`, `gg`
 uses it too. Any pager works; delta is recommended because it looks best:
 

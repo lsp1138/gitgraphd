@@ -1,0 +1,85 @@
+# A tag v* builds gg for Linux and macOS, attaches the tarballs and a
+# checksum file to a GitHub release, and install.sh fetches from there.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Static musl binaries run on any Linux, whatever its libc.
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-24.04
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+          # One Apple-silicon runner builds both Mac targets.
+          - target: aarch64-apple-darwin
+            os: macos-14
+          - target: x86_64-apple-darwin
+            os: macos-14
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: musl linker
+        if: contains(matrix.target, 'musl')
+        run: sudo apt-get update -q && sudo apt-get install -y -q musl-tools
+      - run: cargo build --locked --release --target ${{ matrix.target }}
+      - name: smoke test
+        # the x86_64 Mac binary runs on the arm runner through Rosetta
+        run: target/${{ matrix.target }}/release/gg --version
+      - name: tarball
+        run: |
+          set -eu
+          name=gg-${{ matrix.target }}
+          mkdir "$name"
+          cp target/${{ matrix.target }}/release/gg README.md LICENSE "$name/"
+          tar czf "$name.tar.gz" "$name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gg-${{ matrix.target }}
+          path: gg-${{ matrix.target }}.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: checksums and notes
+        run: |
+          set -eu
+          cd dist
+          sha256sum gg-*.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+          # the CHANGELOG section for this tag becomes the release notes
+          awk -v tag="${GITHUB_REF_NAME}" '
+            /^## / { on = ($2 == tag) ; next }
+            on { print }
+          ' ../CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "See CHANGELOG.md." > notes.md
+      - name: publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          pre=""
+          case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" $pre \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file dist/notes.md \
+            dist/gg-*.tar.gz dist/SHA256SUMS
